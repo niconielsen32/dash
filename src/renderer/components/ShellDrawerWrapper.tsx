@@ -12,7 +12,6 @@ interface ShellDrawerWrapperProps {
   taskId: string | null;
   cwd: string | null;
   collapsed: boolean;
-  label?: string;
   panelRef: React.RefObject<ImperativePanelHandle>;
   animating: boolean;
   onAnimate: () => void;
@@ -26,7 +25,6 @@ export function ShellDrawerWrapper({
   taskId,
   cwd,
   collapsed,
-  label,
   panelRef,
   animating,
   onAnimate,
@@ -56,7 +54,6 @@ export function ShellDrawerWrapper({
         <TerminalDrawer
           cwd={cwd}
           collapsed={collapsed}
-          label={label}
           onCollapse={() => {
             onAnimate();
             panelRef.current?.collapse();
