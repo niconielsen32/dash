@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X } from 'lucide-react';
+import { X, ChevronDown, ChevronRight } from 'lucide-react';
 import { TerminalPane } from './TerminalPane';
 import type { Task, Project } from '@shared/types';
 
@@ -108,6 +108,16 @@ export function MultiTerminalGrid({
   const [order, setOrder] = useState<string[]>(() => tasks.map((t) => t.id));
   const draggedId = useRef<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(new Set());
+
+  function toggleProject(projectId: string) {
+    setCollapsedProjects((prev) => {
+      const next = new Set(prev);
+      if (next.has(projectId)) next.delete(projectId);
+      else next.add(projectId);
+      return next;
+    });
+  }
 
   // Sync order when tasks are added or removed
   useEffect(() => {
@@ -183,37 +193,57 @@ export function MultiTerminalGrid({
         {projectIdOrder.map((projectId) => {
           const project = projects.find((p) => p.id === projectId);
           const groupTasks = tasksByProjectId[projectId];
+          const collapsed = collapsedProjects.has(projectId);
           return (
-            <div key={projectId} className="flex-1 min-h-0 flex flex-col">
+            <div
+              key={projectId}
+              className={collapsed ? 'flex-shrink-0 flex flex-col' : 'flex-1 min-h-0 flex flex-col'}
+            >
               {/* Project section header */}
-              <div
-                className="h-6 flex-shrink-0 flex items-center gap-2 px-3 border-b border-border/40"
+              <button
+                onClick={() => toggleProject(projectId)}
+                className="h-7 flex-shrink-0 flex items-center gap-2 px-3 border-b border-border/40 w-full text-left hover:bg-accent/30 transition-colors duration-100"
                 style={{ background: 'hsl(var(--surface-2))' }}
               >
+                {collapsed ? (
+                  <ChevronRight
+                    size={11}
+                    strokeWidth={2}
+                    className="text-muted-foreground/40 flex-shrink-0"
+                  />
+                ) : (
+                  <ChevronDown
+                    size={11}
+                    strokeWidth={2}
+                    className="text-muted-foreground/40 flex-shrink-0"
+                  />
+                )}
                 <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/60">
                   {project?.name ?? projectId}
                 </span>
                 <span className="text-[10px] text-muted-foreground/30">
                   {groupTasks.length} {groupTasks.length === 1 ? 'terminal' : 'terminals'}
                 </span>
-              </div>
+              </button>
               {/* Tasks grid within project */}
-              <div
-                className={`flex-1 min-h-0 grid ${gridColsClass(groupTasks.length)} gap-[1px] bg-border/40`}
-              >
-                {groupTasks.map((task) => (
-                  <TaskCell
-                    key={task.id}
-                    task={task}
-                    project={project}
-                    showProject={false}
-                    taskActivity={taskActivity}
-                    isDragOver={dragOverId === task.id}
-                    onRemoveTask={onRemoveTask}
-                    {...makeDragHandlers(task.id)}
-                  />
-                ))}
-              </div>
+              {!collapsed && (
+                <div
+                  className={`flex-1 min-h-0 grid ${gridColsClass(groupTasks.length)} gap-[1px] bg-border/40`}
+                >
+                  {groupTasks.map((task) => (
+                    <TaskCell
+                      key={task.id}
+                      task={task}
+                      project={project}
+                      showProject={false}
+                      taskActivity={taskActivity}
+                      isDragOver={dragOverId === task.id}
+                      onRemoveTask={onRemoveTask}
+                      {...makeDragHandlers(task.id)}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           );
         })}
