@@ -67,9 +67,24 @@ if (!gotLock) {
   app.quit();
 }
 
-// ── App Ready ─────────────────────────────────────────────────
+// ── Window Management ─────────────────────────────────────────
 let mainWindow: BrowserWindow | null = null;
 
+export async function openNewWindow(): Promise<BrowserWindow> {
+  const { createWindow } = await import('./window');
+  const win = createWindow();
+
+  // Kill PTYs owned by this window when it closes
+  win.on('close', () => {
+    import('./services/ptyManager').then(({ killByOwner }) => {
+      killByOwner(win.webContents);
+    });
+  });
+
+  return win;
+}
+
+// ── App Ready ─────────────────────────────────────────────────
 app.whenReady().then(async () => {
   // Initialize database
   const { DatabaseService } = await import('./services/DatabaseService');
@@ -83,24 +98,12 @@ app.whenReady().then(async () => {
   const { registerAllIpc } = await import('./ipc');
   registerAllIpc();
 
-  // Create main window
-  const { createWindow } = await import('./window');
-  mainWindow = createWindow();
-
-  // Kill PTYs owned by this window on close (CMD+W on macOS)
-  mainWindow.on('close', () => {
-    import('./services/ptyManager').then(({ killByOwner }) => {
-      killByOwner(mainWindow!.webContents);
-    });
-  });
-
-  // Start activity monitor — must happen after window creation
+  // Start activity monitor (broadcasts to all windows)
   const { activityMonitor } = await import('./services/ActivityMonitor');
-  activityMonitor.start(mainWindow.webContents);
+  activityMonitor.start();
 
-  // Remote control service needs a sender for state change events
-  const { remoteControlService } = await import('./services/remoteControlService');
-  remoteControlService.setSender(mainWindow.webContents);
+  // Create main window
+  mainWindow = await openNewWindow();
 
   // Cleanup orphaned reserve worktrees (background, non-blocking)
   setTimeout(async () => {
@@ -154,12 +157,7 @@ app.on('window-all-closed', () => {
 
 app.on('activate', async () => {
   if (BrowserWindow.getAllWindows().length === 0) {
-    const { createWindow } = await import('./window');
-    mainWindow = createWindow();
-    const { activityMonitor } = await import('./services/ActivityMonitor');
-    activityMonitor.start(mainWindow.webContents);
-    const { remoteControlService } = await import('./services/remoteControlService');
-    remoteControlService.setSender(mainWindow.webContents);
+    mainWindow = await openNewWindow();
   }
 });
 

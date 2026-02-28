@@ -1,4 +1,4 @@
-import type { WebContents } from 'electron';
+import { BrowserWindow } from 'electron';
 import type { RemoteControlState } from '@shared/types';
 
 const MAX_BUFFER = 8 * 1024;
@@ -7,6 +7,7 @@ const WATCH_TIMEOUT = 15_000;
 const URL_REGEX = /https:\/\/claude\.ai\/code\/[a-zA-Z0-9_-]+/;
 
 // Strip ANSI escape sequences so they don't break URL matching
+// eslint-disable-next-line no-control-regex
 const ANSI_RE = /\x1b\[[0-9;]*[a-zA-Z]|\x1b\].*?(?:\x07|\x1b\\)/g;
 
 interface Watcher {
@@ -17,12 +18,6 @@ interface Watcher {
 class RemoteControlServiceImpl {
   private states = new Map<string, RemoteControlState>();
   private watchers = new Map<string, Watcher>();
-  private sender: WebContents | null = null;
-
-  setSender(sender: WebContents): void {
-    this.sender = sender;
-  }
-
   startWatching(ptyId: string): void {
     // Clear any existing watcher
     this.stopWatching(ptyId);
@@ -86,8 +81,10 @@ class RemoteControlServiceImpl {
   }
 
   private emit(ptyId: string, state: RemoteControlState | null): void {
-    if (this.sender && !this.sender.isDestroyed()) {
-      this.sender.send('rc:stateChanged', { ptyId, state });
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) {
+        win.webContents.send('rc:stateChanged', { ptyId, state });
+      }
     }
   }
 }

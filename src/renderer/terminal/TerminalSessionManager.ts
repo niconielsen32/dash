@@ -4,7 +4,7 @@ import { SerializeAddon } from '@xterm/addon-serialize';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import type { TerminalSnapshot } from '../../shared/types';
 import { FilePathLinkProvider } from './FilePathLinkProvider';
-import { darkTheme, lightTheme, resolveTheme } from './terminalThemes';
+import { resolveTheme } from './terminalThemes';
 
 const SNAPSHOT_DEBOUNCE_MS = 10_000;
 const MEMORY_LIMIT_BYTES = 128 * 1024 * 1024; // 128MB soft limit
@@ -467,6 +467,11 @@ export class TerminalSessionManager {
 
   onScrollStateChange(cb: (isAtBottom: boolean) => void) {
     this.onScrollStateChangeCallback = cb;
+    // Immediately sync the caller with the current state so newly mounted
+    // components don't wait for the next scroll/write event to get in sync.
+    const current = this.isAtBottom();
+    this.lastEmittedAtBottom = current;
+    cb(current);
   }
 
   scrollToBottom() {

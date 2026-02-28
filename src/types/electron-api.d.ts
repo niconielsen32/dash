@@ -19,6 +19,7 @@ export interface ElectronAPI {
   // App
   getAppVersion: () => Promise<string>;
   getPlatform: () => string;
+  newWindow: () => Promise<void>;
 
   // Dialogs
   showOpenDialog: () => Promise<IpcResponse<string[]>>;

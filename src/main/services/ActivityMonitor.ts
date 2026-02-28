@@ -1,6 +1,6 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import type { WebContents } from 'electron';
+import { BrowserWindow } from 'electron';
 
 const execFileAsync = promisify(execFile);
 
@@ -17,7 +17,6 @@ const POLL_INTERVAL = 2000;
 class ActivityMonitorImpl {
   private activities = new Map<string, PtyActivity>();
   private pollTimer: ReturnType<typeof setTimeout> | null = null;
-  private sender: WebContents | null = null;
 
   register(ptyId: string, pid: number, isDirectSpawn: boolean): void {
     this.activities.set(ptyId, {
@@ -67,8 +66,7 @@ class ActivityMonitorImpl {
     }
   }
 
-  start(sender: WebContents): void {
-    this.sender = sender;
+  start(): void {
     this.schedulePoll();
   }
 
@@ -77,7 +75,6 @@ class ActivityMonitorImpl {
       clearTimeout(this.pollTimer);
       this.pollTimer = null;
     }
-    this.sender = null;
   }
 
   getAll(): Record<string, ActivityState> {
@@ -97,9 +94,7 @@ class ActivityMonitorImpl {
     this.pollTimer = setTimeout(async () => {
       this.pollTimer = null;
       await this.poll();
-      if (this.sender) {
-        this.schedulePoll();
-      }
+      this.schedulePoll();
     }, POLL_INTERVAL);
   }
 
@@ -201,8 +196,11 @@ class ActivityMonitorImpl {
   }
 
   private emitAll(): void {
-    if (this.sender && !this.sender.isDestroyed()) {
-      this.sender.send('pty:activity', this.getAll());
+    const payload = this.getAll();
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) {
+        win.webContents.send('pty:activity', payload);
+      }
     }
   }
 }

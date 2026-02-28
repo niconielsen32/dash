@@ -11,11 +11,36 @@ interface MultiTerminalGridProps {
   onRemoveTask?: (taskId: string) => void;
 }
 
+function gridColsCount(count: number): number {
+  if (count <= 1) return 1;
+  if (count <= 4) return 2;
+  if (count <= 9) return 3;
+  return 4;
+}
+
 function gridColsClass(count: number): string {
-  if (count <= 1) return 'grid-cols-1';
-  if (count <= 4) return 'grid-cols-2';
-  if (count <= 9) return 'grid-cols-3';
+  const n = gridColsCount(count);
+  if (n === 1) return 'grid-cols-1';
+  if (n === 2) return 'grid-cols-2';
+  if (n === 3) return 'grid-cols-3';
   return 'grid-cols-4';
+}
+
+/**
+ * Items in the last complete row that sit beyond the partial last row
+ * should span down to fill the empty cells below them.
+ */
+function cellSpanStyle(index: number, total: number): React.CSSProperties | undefined {
+  const cols = gridColsCount(total);
+  const rows = Math.ceil(total / cols);
+  const remainder = total % cols;
+  if (remainder === 0 || rows < 2) return undefined;
+  const rowIndex = Math.floor(index / cols);
+  const colIndex = index % cols;
+  if (rowIndex === rows - 2 && colIndex >= remainder) {
+    return { gridRow: 'span 2' };
+  }
+  return undefined;
 }
 
 function ActivityDot({ status }: { status: 'busy' | 'idle' | 'waiting' | undefined }) {
@@ -29,7 +54,6 @@ function ActivityDot({ status }: { status: 'busy' | 'idle' | 'waiting' | undefin
   return <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${cls}`} />;
 }
 
-/** Compact row of status dots for a group of tasks — shown in section headers. */
 function GroupActivitySummary({
   tasks,
   taskActivity,
@@ -79,6 +103,7 @@ function TaskCell({
   onDragLeave,
   onDrop,
   onDragEnd,
+  style,
 }: {
   task: Task;
   project: Project | undefined;
@@ -91,9 +116,10 @@ function TaskCell({
   onDragLeave: () => void;
   onDrop: (e: React.DragEvent) => void;
   onDragEnd: () => void;
+  style?: React.CSSProperties;
 }) {
   return (
-    <div className="flex flex-col min-h-0 bg-background">
+    <div className="group flex flex-col min-h-0 bg-background" style={style}>
       <div
         draggable
         onDragStart={onDragStart}
@@ -155,7 +181,6 @@ export function MultiTerminalGrid({
     });
   }
 
-  // Sync order when tasks are added or removed
   useEffect(() => {
     setOrder((prev) => {
       const taskIds = new Set(tasks.map((t) => t.id));
@@ -235,13 +260,12 @@ export function MultiTerminalGrid({
               key={projectId}
               className={`flex flex-col ${collapsed ? 'flex-shrink-0' : 'flex-1 min-h-0'}`}
             >
-              {/* Project section header */}
               <button
                 onClick={() => toggleProject(projectId)}
-                className="h-7 flex-shrink-0 flex items-center gap-2 px-3 w-full text-left border-b border-border/40 hover:bg-accent/20 transition-colors duration-100 group"
+                className="h-7 flex-shrink-0 flex items-center gap-2 px-3 w-full text-left border-b border-border/40 hover:bg-accent/20 transition-colors duration-100 group/header"
                 style={{ background: 'hsl(var(--surface-2))' }}
               >
-                <span className="flex-shrink-0 text-muted-foreground/40 transition-transform duration-150 group-hover:text-muted-foreground/70">
+                <span className="flex-shrink-0 text-muted-foreground/40 transition-transform duration-150 group-hover/header:text-muted-foreground/70">
                   {collapsed ? (
                     <ChevronRight size={11} strokeWidth={2} />
                   ) : (
@@ -255,36 +279,28 @@ export function MultiTerminalGrid({
                 <GroupActivitySummary tasks={groupTasks} taskActivity={taskActivity} />
               </button>
 
-              {/* Collapsible content — grid rows animation */}
-              <div
-                className="overflow-hidden min-h-0"
-                style={{
-                  display: 'grid',
-                  gridTemplateRows: collapsed ? '0fr' : '1fr',
-                  transition: 'grid-template-rows 180ms ease',
-                  flex: collapsed ? undefined : '1 1 0',
-                }}
-              >
-                <div className="overflow-hidden min-h-0">
+              {!collapsed && (
+                <div className="flex-1 min-h-0">
                   <div
                     className={`h-full grid ${gridColsClass(groupTasks.length)} gap-[1px] bg-border/40`}
+                    style={{ gridAutoRows: '1fr' }}
                   >
-                    {groupTasks.map((task) => (
-                      <div key={task.id} className="group flex flex-col min-h-0 bg-background">
-                        <TaskCell
-                          task={task}
-                          project={project}
-                          showProject={false}
-                          taskActivity={taskActivity}
-                          isDragOver={dragOverId === task.id}
-                          onRemoveTask={onRemoveTask}
-                          {...makeDragHandlers(task.id)}
-                        />
-                      </div>
+                    {groupTasks.map((task, i) => (
+                      <TaskCell
+                        key={task.id}
+                        task={task}
+                        project={project}
+                        showProject={false}
+                        taskActivity={taskActivity}
+                        isDragOver={dragOverId === task.id}
+                        onRemoveTask={onRemoveTask}
+                        style={cellSpanStyle(i, groupTasks.length)}
+                        {...makeDragHandlers(task.id)}
+                      />
                     ))}
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           );
         })}
@@ -292,21 +308,23 @@ export function MultiTerminalGrid({
     );
   }
 
-  // Flat grid
   return (
-    <div className={`h-full grid ${gridColsClass(orderedTasks.length)} gap-[1px] bg-border/40`}>
-      {orderedTasks.map((task) => (
-        <div key={task.id} className="group flex flex-col min-h-0 bg-background">
-          <TaskCell
-            task={task}
-            project={projects.find((p) => p.id === task.projectId)}
-            showProject
-            taskActivity={taskActivity}
-            isDragOver={dragOverId === task.id}
-            onRemoveTask={onRemoveTask}
-            {...makeDragHandlers(task.id)}
-          />
-        </div>
+    <div
+      className={`h-full grid ${gridColsClass(orderedTasks.length)} gap-[1px] bg-border/40`}
+      style={{ gridAutoRows: '1fr' }}
+    >
+      {orderedTasks.map((task, i) => (
+        <TaskCell
+          key={task.id}
+          task={task}
+          project={projects.find((p) => p.id === task.projectId)}
+          showProject
+          taskActivity={taskActivity}
+          isDragOver={dragOverId === task.id}
+          onRemoveTask={onRemoveTask}
+          style={cellSpanStyle(i, orderedTasks.length)}
+          {...makeDragHandlers(task.id)}
+        />
       ))}
     </div>
   );

@@ -43,6 +43,11 @@ export function registerAppIpc(): void {
     return app.getVersion();
   });
 
+  ipcMain.handle('app:newWindow', async () => {
+    const { openNewWindow } = await import('../main');
+    await openNewWindow();
+  });
+
   ipcMain.handle('app:openExternal', async (_event, url: string) => {
     await shell.openExternal(url);
   });

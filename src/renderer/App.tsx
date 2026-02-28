@@ -142,6 +142,8 @@ export function App() {
     return localStorage.getItem('gridGroupByProject') !== 'false';
   });
 
+  const [gridHiddenTaskIds, setGridHiddenTaskIds] = useState<Set<string>>(new Set());
+
   const [extraTabsByTask, setExtraTabsByTask] = useState<Record<string, string[]>>(() => {
     try {
       return JSON.parse(localStorage.getItem('extraTabsByTask') || '{}');
@@ -188,7 +190,12 @@ export function App() {
   // All tasks with active PTY sessions (for grid view)
   const allTasksWithActivity = Object.values(tasksByProject)
     .flat()
-    .filter((t) => !t.archivedAt && (taskActivity[t.id] !== undefined || t.id === activeTaskId));
+    .filter(
+      (t) =>
+        !t.archivedAt &&
+        !gridHiddenTaskIds.has(t.id) &&
+        (taskActivity[t.id] !== undefined || t.id === activeTaskId),
+    );
 
   // Load projects on mount
   useEffect(() => {
@@ -237,10 +244,15 @@ export function App() {
       }
       // Detect any busy→idle transition (only for PTYs that completed a full work cycle)
       // Skip transitions from 'waiting' — those are not task completions
+      let playedSound = false;
       for (const [id, state] of Object.entries(newActivity)) {
         if (prevActivity[id] === 'busy' && state === 'idle' && hasBeenIdle.has(id)) {
-          playNotificationSound(notificationSoundRef.current);
-          break; // one sound per update, even if multiple tasks transition
+          if (!playedSound) {
+            playNotificationSound(notificationSoundRef.current);
+            playedSound = true;
+          }
+          // Scroll finished terminal to bottom so the result is visible
+          sessionRegistry.get(id)?.scrollToBottom();
         }
       }
       // Mark PTYs that have reached idle (so the *next* busy→idle triggers)
@@ -1167,13 +1179,10 @@ export function App() {
                 taskActivity={taskActivity}
                 groupByProject={gridGroupByProject}
                 onRemoveTask={(taskId) => {
-                  sessionRegistry.dispose(taskId);
-                  window.electronAPI.ptyKill(taskId);
-                  setTaskActivity((prev) => {
-                    const next = { ...prev };
-                    delete next[taskId];
-                    return next;
-                  });
+                  // Just hide from grid — leave the process running so it
+                  // continues in the background. Status stays visible in
+                  // the sidebar and the task can be pulled back into the grid.
+                  setGridHiddenTaskIds((prev) => new Set([...prev, taskId]));
                 }}
               />
             ) : (
