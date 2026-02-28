@@ -1,1 +1,2 @@
+export PATH="$HOME/Library/pnpm:$PATH"
 pnpm exec lint-staged

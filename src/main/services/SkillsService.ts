@@ -1,4 +1,5 @@
 import * as fs from 'fs/promises';
+import type { Dirent } from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { execFile } from 'child_process';
@@ -42,7 +43,7 @@ export class SkillsService {
     const files: string[] = [];
 
     async function walk(dir: string, prefix: string): Promise<void> {
-      let entries: Awaited<ReturnType<typeof fs.readdir>>;
+      let entries: Dirent[];
       try {
         entries = await fs.readdir(dir, { withFileTypes: true });
       } catch {
@@ -67,7 +68,7 @@ export class SkillsService {
     scope: 'global' | 'project',
     projectPath?: string,
   ): Promise<Skill[]> {
-    let entries: Awaited<ReturnType<typeof fs.readdir>>;
+    let entries: Dirent[];
     try {
       entries = await fs.readdir(skillsDir, { withFileTypes: true });
     } catch {
