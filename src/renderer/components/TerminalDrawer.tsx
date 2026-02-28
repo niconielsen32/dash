@@ -82,6 +82,12 @@ export function TerminalDrawer({
     const container = containerRef.current;
     if (!container) return;
 
+    // detach() leaves the xterm element in the DOM — remove all previous
+    // session elements before attaching the new one, otherwise they stack.
+    while (container.firstChild) {
+      container.removeChild(container.firstChild);
+    }
+
     const sessionCwd =
       activeTab === TASK_TAB_SENTINEL ? cwd : tabCwds[activeTab] || projectPath || homeDir || cwd;
     const session = sessionRegistry.getOrCreate({
