@@ -84,6 +84,7 @@ export interface ElectronAPI {
   ptyStartDirect: (args: {
     id: string;
     cwd: string;
+    projectPath?: string;
     cols: number;
     rows: number;
     autoApprove?: boolean;
@@ -245,6 +246,9 @@ export interface ElectronAPI {
     scope: 'global' | 'project';
     projectPath?: string;
   }) => Promise<IpcResponse<void>>;
+  skillsMoveSkill: (args: { oldDir: string; newDir: string }) => Promise<IpcResponse<void>>;
+  skillsWatchDirs: (args: { globalDir: string; projectDir?: string }) => Promise<IpcResponse<void>>;
+  onSkillsChanged: (callback: () => void) => () => void;
 }
 
 declare global {

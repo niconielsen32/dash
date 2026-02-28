@@ -8,11 +8,12 @@ const OVERLAY_FADE_MS = 300;
 interface TerminalPaneProps {
   id: string;
   cwd: string;
+  projectPath?: string;
   autoApprove?: boolean;
   shellOnly?: boolean;
 }
 
-export function TerminalPane({ id, cwd, autoApprove, shellOnly }: TerminalPaneProps) {
+export function TerminalPane({ id, cwd, projectPath, autoApprove, shellOnly }: TerminalPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [showOverlay, setShowOverlay] = useState(false);
@@ -34,7 +35,7 @@ export function TerminalPane({ id, cwd, autoApprove, shellOnly }: TerminalPanePr
 
     // Get or create session first so we can register callbacks
     // before the async attach() work detects a restart
-    const session = sessionRegistry.getOrCreate({ id, cwd, autoApprove, shellOnly });
+    const session = sessionRegistry.getOrCreate({ id, cwd, projectPath, autoApprove, shellOnly });
 
     session.onRestarting(() => {
       overlayStartRef.current = Date.now();
@@ -56,7 +57,7 @@ export function TerminalPane({ id, cwd, autoApprove, shellOnly }: TerminalPanePr
     return () => {
       sessionRegistry.detach(id);
     };
-  }, [id, cwd, autoApprove, shellOnly, hideOverlay]);
+  }, [id, cwd, projectPath, autoApprove, shellOnly, hideOverlay]);
 
   return (
     <div

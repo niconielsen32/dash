@@ -25,6 +25,7 @@ export function registerPtyIpc(): void {
       args: {
         id: string;
         cwd: string;
+        projectPath?: string;
         cols: number;
         rows: number;
         autoApprove?: boolean;

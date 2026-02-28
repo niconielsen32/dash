@@ -25,17 +25,33 @@ export class SkillsService {
     return this.globalSkillsPath();
   }
 
-  static parseSkillMd(content: string): { name: string; description: string } {
+  static parseSkillMd(content: string): Partial<Skill> & { name: string; description: string } {
     const frontmatterMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
     if (!frontmatterMatch) return { name: '', description: '' };
 
-    const frontmatter = frontmatterMatch[1];
-    const nameMatch = frontmatter.match(/^name:\s*(.+)$/m);
-    const descMatch = frontmatter.match(/^description:\s*(.+)$/m);
+    const fm = frontmatterMatch[1];
+    const str = (key: string) => fm.match(new RegExp(`^${key}:\\s*(.+)$`, 'm'))?.[1]?.trim();
+
+    const allowedToolsRaw = str('allowed-tools');
+    const disableRaw = str('disable-model-invocation');
+    const userInvocableRaw = str('user-invocable');
+    const contextRaw = str('context');
 
     return {
-      name: nameMatch?.[1]?.trim() ?? '',
-      description: descMatch?.[1]?.trim() ?? '',
+      name: str('name') ?? '',
+      description: str('description') ?? '',
+      argumentHint: str('argument-hint'),
+      disableModelInvocation: disableRaw === 'true' ? true : undefined,
+      userInvocable: userInvocableRaw === 'false' ? false : undefined,
+      allowedTools: allowedToolsRaw
+        ? allowedToolsRaw
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : undefined,
+      model: str('model'),
+      context: contextRaw === 'fork' ? 'fork' : undefined,
+      agent: str('agent'),
     };
   }
 
@@ -89,13 +105,13 @@ export class SkillsService {
         continue;
       }
 
-      const { name, description } = this.parseSkillMd(content);
+      const parsed = this.parseSkillMd(content);
       const files = await this.listSkillFiles(skillDir);
 
       skills.push({
+        ...parsed,
         id: entry.name,
-        name: name || entry.name,
-        description,
+        name: parsed.name || entry.name,
         scope,
         projectPath: scope === 'project' ? projectPath : undefined,
         path: skillDir,
@@ -193,5 +209,18 @@ export class SkillsService {
       timeout: AGR_TIMEOUT_MS,
       env: process.env as Record<string, string>,
     });
+  }
+
+  static async moveSkill(oldDir: string, newDir: string): Promise<void> {
+    await fs.mkdir(path.dirname(newDir), { recursive: true });
+    try {
+      await fs.rename(oldDir, newDir);
+    } catch (err: unknown) {
+      // Cross-device rename fails with EXDEV — fall back to copy + delete
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code !== 'EXDEV') throw err;
+      await fs.cp(oldDir, newDir, { recursive: true });
+      await fs.rm(oldDir, { recursive: true, force: true });
+    }
   }
 }

@@ -208,4 +208,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   skillsAgrCheck: () => ipcRenderer.invoke('skills:agrCheck'),
   skillsAgrInstall: (args: { handle: string; scope: 'global' | 'project'; projectPath?: string }) =>
     ipcRenderer.invoke('skills:agrInstall', args),
+  skillsMoveSkill: (args: { oldDir: string; newDir: string }) =>
+    ipcRenderer.invoke('skills:moveSkill', args),
+  skillsWatchDirs: (args: { globalDir: string; projectDir?: string }) =>
+    ipcRenderer.invoke('skills:watchDirs', args),
+  onSkillsChanged: (callback: () => void) => {
+    const handler = () => callback();
+    ipcRenderer.on('skills:changed', handler);
+    return () => {
+      ipcRenderer.removeListener('skills:changed', handler);
+    };
+  },
 });
