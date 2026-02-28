@@ -43,6 +43,10 @@ export function registerAppIpc(): void {
     return app.getVersion();
   });
 
+  ipcMain.handle('app:getHomeDir', () => {
+    return homedir();
+  });
+
   ipcMain.handle('app:newWindow', async () => {
     const { openNewWindow } = await import('../main');
     await openNewWindow();

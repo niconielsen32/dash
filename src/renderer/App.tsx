@@ -1098,7 +1098,6 @@ export function App() {
             taskId={activeTask?.id ?? null}
             cwd={activeTask?.path ?? null}
             collapsed={shellDrawerCollapsed}
-            label={activeTask?.useWorktree ? 'Worktree' : 'Terminal'}
             panelRef={shellDrawerPanelRef}
             animating={shellDrawerAnimating}
             onAnimate={() => setShellDrawerAnimating(true)}
@@ -1157,7 +1156,6 @@ export function App() {
             taskId={activeTask?.id ?? null}
             cwd={activeTask?.path ?? null}
             collapsed={shellDrawerCollapsed}
-            label={activeTask?.useWorktree ? 'Worktree' : 'Terminal'}
             panelRef={shellDrawerPanelRef}
             animating={shellDrawerAnimating}
             onAnimate={() => setShellDrawerAnimating(true)}

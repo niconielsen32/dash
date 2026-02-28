@@ -4,6 +4,7 @@ import { sessionRegistry } from '../terminal/SessionRegistry';
 
 const TABS_KEY = 'shellDrawerTabs';
 const ACTIVE_TAB_KEY = 'shellDrawerActiveTab';
+const TAB_CWDS_KEY = 'shellDrawerTabCwds';
 
 function loadPersistedTabs(): string[] {
   try {
@@ -24,6 +25,16 @@ function loadPersistedActiveTab(tabs: string[]): string {
   return tabs[0];
 }
 
+function loadPersistedTabCwds(): Record<string, string> {
+  try {
+    const s = localStorage.getItem(TAB_CWDS_KEY);
+    if (s) return JSON.parse(s);
+  } catch {
+    // ignore parse errors
+  }
+  return {};
+}
+
 interface TerminalDrawerProps {
   cwd: string;
   collapsed: boolean;
@@ -33,19 +44,32 @@ interface TerminalDrawerProps {
 
 export function TerminalDrawer({ cwd, collapsed, onCollapse, onExpand }: TerminalDrawerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const tabBarRef = useRef<HTMLDivElement>(null);
 
   const [tabs, setTabs] = useState<string[]>(() => loadPersistedTabs());
   const [activeTab, setActiveTab] = useState<string>(() => {
     const t = loadPersistedTabs();
     return loadPersistedActiveTab(t);
   });
+  const [tabCwds, setTabCwds] = useState<Record<string, string>>(() => loadPersistedTabCwds());
+  const [homeDir, setHomeDir] = useState<string>('');
+
+  // Fetch home directory once on mount
+  useEffect(() => {
+    window.electronAPI.getHomeDir().then((dir) => setHomeDir(dir));
+  }, []);
 
   // Attach the active tab's session to the shared container
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    const session = sessionRegistry.getOrCreate({ id: activeTab, cwd, shellOnly: true });
+    const sessionCwd = tabCwds[activeTab] || cwd;
+    const session = sessionRegistry.getOrCreate({
+      id: activeTab,
+      cwd: sessionCwd,
+      shellOnly: true,
+    });
     session.attach(container);
 
     if (!collapsed) {
@@ -55,7 +79,7 @@ export function TerminalDrawer({ cwd, collapsed, onCollapse, onExpand }: Termina
     return () => {
       sessionRegistry.detach(activeTab);
     };
-  }, [activeTab, cwd]);
+  }, [activeTab]);
 
   // Focus when expanding
   useEffect(() => {
@@ -64,17 +88,35 @@ export function TerminalDrawer({ cwd, collapsed, onCollapse, onExpand }: Termina
     }
   }, [collapsed, activeTab]);
 
+  // Scroll active tab into view when it changes
+  useEffect(() => {
+    const bar = tabBarRef.current;
+    if (!bar) return;
+    const activeEl = bar.querySelector('[data-active="true"]') as HTMLElement | null;
+    if (activeEl) {
+      activeEl.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+  }, [activeTab]);
+
   function saveTabs(newTabs: string[], newActive: string) {
     localStorage.setItem(TABS_KEY, JSON.stringify(newTabs));
     localStorage.setItem(ACTIVE_TAB_KEY, newActive);
   }
 
+  function saveTabCwds(cwds: Record<string, string>) {
+    localStorage.setItem(TAB_CWDS_KEY, JSON.stringify(cwds));
+  }
+
   function addTab() {
     const id = `shell-global-${Date.now()}`;
+    const newTabCwd = homeDir || cwd;
     const newTabs = [...tabs, id];
+    const newTabCwds = { ...tabCwds, [id]: newTabCwd };
     setTabs(newTabs);
     setActiveTab(id);
+    setTabCwds(newTabCwds);
     saveTabs(newTabs, id);
+    saveTabCwds(newTabCwds);
   }
 
   function removeTab(id: string) {
@@ -82,10 +124,14 @@ export function TerminalDrawer({ cwd, collapsed, onCollapse, onExpand }: Termina
     const idx = tabs.indexOf(id);
     const newTabs = tabs.filter((t) => t !== id);
     const newActive = id === activeTab ? newTabs[Math.max(0, idx - 1)] : activeTab;
+    const newTabCwds = { ...tabCwds };
+    delete newTabCwds[id];
     sessionRegistry.dispose(id);
     setTabs(newTabs);
     setActiveTab(newActive);
+    setTabCwds(newTabCwds);
     saveTabs(newTabs, newActive);
+    saveTabCwds(newTabCwds);
   }
 
   function selectTab(id: string) {
@@ -102,12 +148,17 @@ export function TerminalDrawer({ cwd, collapsed, onCollapse, onExpand }: Termina
         style={{ background: 'hsl(var(--surface-1))' }}
       >
         {/* Tabs + add button */}
-        <div className="flex items-center flex-1 min-w-0 h-full overflow-x-auto scrollbar-none">
+        <div
+          ref={tabBarRef}
+          className="flex items-center flex-1 min-w-0 h-full overflow-x-auto"
+          style={{ scrollbarWidth: 'none' }}
+        >
           {tabs.map((tabId, i) => {
             const active = tabId === activeTab && !collapsed;
             return (
               <div
                 key={tabId}
+                data-active={active ? 'true' : undefined}
                 className={`relative group/tab flex-shrink-0 flex items-center gap-1.5 h-full px-3 cursor-pointer select-none border-r border-border/30 transition-colors ${
                   active
                     ? 'text-foreground'
