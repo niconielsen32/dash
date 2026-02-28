@@ -24,9 +24,7 @@ export class DatabaseService {
     return rows.map(this.mapProject);
   }
 
-  static saveProject(
-    data: Partial<Project> & { name: string; path: string },
-  ): Project {
+  static saveProject(data: Partial<Project> & { name: string; path: string }): Project {
     const db = getDb();
     const id = data.id || randomUUID();
     const now = new Date().toISOString();
@@ -68,7 +66,12 @@ export class DatabaseService {
 
   static getTasks(projectId: string): Task[] {
     const db = getDb();
-    const rows = db.select().from(tasks).where(eq(tasks.projectId, projectId)).orderBy(desc(tasks.createdAt)).all();
+    const rows = db
+      .select()
+      .from(tasks)
+      .where(eq(tasks.projectId, projectId))
+      .orderBy(desc(tasks.createdAt))
+      .all();
     return rows.map(this.mapTask);
   }
 
@@ -80,6 +83,7 @@ export class DatabaseService {
     const now = new Date().toISOString();
 
     const linkedIssuesJson = data.linkedIssues ? JSON.stringify(data.linkedIssues) : null;
+    const assignedSkillsJson = data.assignedSkills ? JSON.stringify(data.assignedSkills) : null;
 
     db.insert(tasks)
       .values({
@@ -92,6 +96,7 @@ export class DatabaseService {
         useWorktree: data.useWorktree ?? true,
         autoApprove: data.autoApprove ?? false,
         linkedIssues: linkedIssuesJson,
+        assignedSkills: assignedSkillsJson,
         createdAt: now,
         updatedAt: now,
       })
@@ -103,6 +108,7 @@ export class DatabaseService {
           path: data.path,
           status: data.status ?? 'idle',
           linkedIssues: linkedIssuesJson,
+          assignedSkills: assignedSkillsJson,
           updatedAt: now,
         },
       })
@@ -137,11 +143,7 @@ export class DatabaseService {
 
   static getConversations(taskId: string): Conversation[] {
     const db = getDb();
-    const rows = db
-      .select()
-      .from(conversations)
-      .where(eq(conversations.taskId, taskId))
-      .all();
+    const rows = db.select().from(conversations).where(eq(conversations.taskId, taskId)).all();
     return rows.map(this.mapConversation);
   }
 
@@ -149,11 +151,7 @@ export class DatabaseService {
     const db = getDb();
 
     // Check if main conversation exists
-    const existing = db
-      .select()
-      .from(conversations)
-      .where(eq(conversations.taskId, taskId))
-      .all();
+    const existing = db.select().from(conversations).where(eq(conversations.taskId, taskId)).all();
 
     const main = existing.find((c) => c.isMain);
     if (main) return this.mapConversation(main);
@@ -203,6 +201,15 @@ export class DatabaseService {
       }
     }
 
+    let assignedSkills: import('@shared/types').AssignedSkill[] | null = null;
+    if (row.assignedSkills) {
+      try {
+        assignedSkills = JSON.parse(row.assignedSkills);
+      } catch {
+        // Corrupted JSON — ignore
+      }
+    }
+
     return {
       id: row.id,
       projectId: row.projectId,
@@ -213,6 +220,7 @@ export class DatabaseService {
       useWorktree: row.useWorktree ?? true,
       autoApprove: row.autoApprove ?? false,
       linkedIssues,
+      assignedSkills,
       archivedAt: row.archivedAt,
       createdAt: row.createdAt ?? '',
       updatedAt: row.updatedAt ?? '',

@@ -9,6 +9,12 @@ export interface Project {
   updatedAt: string;
 }
 
+export interface AssignedSkill {
+  skillId: string;
+  scope: 'global' | 'project';
+  projectPath?: string;
+}
+
 export interface Task {
   id: string;
   projectId: string;
@@ -19,6 +25,7 @@ export interface Task {
   useWorktree: boolean;
   autoApprove: boolean;
   linkedIssues: number[] | null;
+  assignedSkills: AssignedSkill[] | null;
   archivedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -201,4 +208,16 @@ export interface GithubIssue {
 export interface RemoteControlState {
   url: string;
   active: boolean;
+}
+
+// ── Skills Types ─────────────────────────────────────────────
+
+export interface Skill {
+  id: string; // directory name (kebab-case, e.g. "commit-helper")
+  name: string; // from YAML frontmatter
+  description: string; // from YAML frontmatter
+  scope: 'global' | 'project';
+  projectPath?: string; // only for project-scoped skills
+  path: string; // absolute path to skill directory
+  files: string[]; // relative paths of all files in the skill dir
 }

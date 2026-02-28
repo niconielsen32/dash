@@ -70,8 +70,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   // Remote control
-  ptyRemoteControlEnable: (ptyId: string) =>
-    ipcRenderer.invoke('pty:remoteControl:enable', ptyId),
+  ptyRemoteControlEnable: (ptyId: string) => ipcRenderer.invoke('pty:remoteControl:enable', ptyId),
   ptyRemoteControlGetAllStates: () => ipcRenderer.invoke('pty:remoteControl:getAllStates'),
   onRemoteControlStateChanged: (
     callback: (data: { ptyId: string; state: { url: string; active: boolean } | null }) => void,
@@ -182,4 +181,27 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.removeListener('git:fileChanged', handler);
     };
   },
+
+  // Skills
+  skillsList: (args: { projectPath?: string }) => ipcRenderer.invoke('skills:list', args),
+  skillsGetFile: (args: { skillDir: string; fileName: string }) =>
+    ipcRenderer.invoke('skills:getFile', args),
+  skillsCreate: (args: {
+    skillId: string;
+    name: string;
+    description: string;
+    content: string;
+    scope: 'global' | 'project';
+    projectPath?: string;
+  }) => ipcRenderer.invoke('skills:create', args),
+  skillsWriteFile: (args: { skillDir: string; fileName: string; content: string }) =>
+    ipcRenderer.invoke('skills:writeFile', args),
+  skillsDelete: (args: { skillDir: string }) => ipcRenderer.invoke('skills:delete', args),
+  skillsDeleteFile: (args: { skillDir: string; fileName: string }) =>
+    ipcRenderer.invoke('skills:deleteFile', args),
+  skillsGetDir: (args: { scope: 'global' | 'project'; projectPath?: string }) =>
+    ipcRenderer.invoke('skills:getDir', args),
+  skillsAgrCheck: () => ipcRenderer.invoke('skills:agrCheck'),
+  skillsAgrInstall: (args: { handle: string; scope: 'global' | 'project'; projectPath?: string }) =>
+    ipcRenderer.invoke('skills:agrInstall', args),
 });

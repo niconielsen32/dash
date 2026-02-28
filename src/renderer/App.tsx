@@ -16,6 +16,8 @@ import { AddProjectModal } from './components/AddProjectModal';
 import { DeleteTaskModal } from './components/DeleteTaskModal';
 import { RemoteControlModal } from './components/RemoteControlModal';
 import { SettingsModal } from './components/SettingsModal';
+import { SkillEditorModal } from './components/SkillEditorModal';
+import { CreateSkillModal } from './components/CreateSkillModal';
 import { ToastContainer } from './components/Toast';
 import type {
   Project,
@@ -24,6 +26,8 @@ import type {
   DiffResult,
   GithubIssue,
   RemoteControlState,
+  Skill,
+  AssignedSkill,
 } from '../shared/types';
 import { loadKeybindings, saveKeybindings, matchesBinding } from './keybindings';
 import type { KeyBindingMap } from './keybindings';
@@ -97,6 +101,12 @@ export function App() {
     window.electronAPI.setCommitAttribution?.(commitAttribution);
   }, [commitAttribution]);
 
+  // Skills state
+  const [skills, setSkills] = useState<Skill[]>([]);
+  const [showCreateSkill, setShowCreateSkill] = useState(false);
+  const [editingSkill, setEditingSkill] = useState<Skill | null>(null);
+  const [agrAvailable, setAgrAvailable] = useState(false);
+
   // Activity state — keys are PTY IDs that have active sessions
   const [taskActivity, setTaskActivity] = useState<Record<string, 'busy' | 'idle' | 'waiting'>>({});
 
@@ -152,6 +162,7 @@ export function App() {
   const [shellDrawerAnimating, setShellDrawerAnimating] = useState(false);
   const fileWatcherCleanup = useRef<(() => void) | null>(null);
   const gitPollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const activeTaskIdRef = useRef<string | null>(activeTaskId);
   const activeProject = projects.find((p) => p.id === activeProjectId) ?? null;
 
   // Find activeTask across all projects
@@ -162,6 +173,9 @@ export function App() {
     }
     return null;
   })();
+
+  // Keep ref in sync so async callbacks can check the current active task
+  activeTaskIdRef.current = activeTaskId;
 
   // All non-archived tasks for the active project (for cycling)
   const activeProjectTasks = activeProjectId
@@ -176,7 +190,16 @@ export function App() {
   // Load projects on mount
   useEffect(() => {
     loadProjects();
+    // Check agr availability once on mount
+    window.electronAPI.skillsAgrCheck().then((resp) => {
+      if (resp.success) setAgrAvailable(resp.data ?? false);
+    });
   }, []);
+
+  // Load skills when active project changes
+  useEffect(() => {
+    loadSkills();
+  }, [activeProjectId]);
 
   // Save all terminal snapshots when app is about to quit
   useEffect(() => {
@@ -331,22 +354,23 @@ export function App() {
     }
 
     const taskCwd = activeTask.path;
-    refreshGitStatus(taskCwd);
+    const taskId = activeTask.id;
+    refreshGitStatus(taskCwd, taskId);
 
-    window.electronAPI.gitWatch({ id: activeTask.id, cwd: taskCwd });
+    window.electronAPI.gitWatch({ id: taskId, cwd: taskCwd });
     const unsubscribe = window.electronAPI.onGitFileChanged((id) => {
-      if (id === activeTask.id) {
-        refreshGitStatus(taskCwd);
+      if (id === taskId) {
+        refreshGitStatus(taskCwd, taskId);
       }
     });
 
     gitPollTimer.current = setInterval(() => {
-      refreshGitStatus(taskCwd);
+      refreshGitStatus(taskCwd, taskId);
     }, GIT_POLL_INTERVAL);
 
     fileWatcherCleanup.current = () => {
       unsubscribe();
-      window.electronAPI.gitUnwatch(activeTask.id);
+      window.electronAPI.gitUnwatch(taskId);
       if (gitPollTimer.current) {
         clearInterval(gitPollTimer.current);
         gitPollTimer.current = null;
@@ -545,12 +569,32 @@ export function App() {
     }
   }
 
-  async function refreshGitStatus(cwd: string) {
+  async function loadSkills() {
+    const projectPath = projects.find((p) => p.id === activeProjectId)?.path;
+    const resp = await window.electronAPI.skillsList({ projectPath });
+    if (resp.success && resp.data) {
+      setSkills(resp.data);
+    }
+  }
+
+  function handleDeleteSkill(skill: Skill) {
+    if (!confirm(`Delete skill "${skill.name}"? This cannot be undone.`)) return;
+    window.electronAPI.skillsDelete({ skillDir: skill.path }).then((resp) => {
+      if (resp.success) {
+        loadSkills();
+      }
+    });
+  }
+
+  async function refreshGitStatus(cwd: string, taskId?: string) {
     setGitLoading(true);
     try {
       const resp = await window.electronAPI.gitGetStatus(cwd);
       if (resp.success && resp.data) {
-        setGitStatus(resp.data);
+        // Guard against stale responses from a previously active task
+        if (taskId === undefined || activeTaskIdRef.current === taskId) {
+          setGitStatus(resp.data);
+        }
       }
     } catch {
       // Ignore
@@ -686,6 +730,7 @@ export function App() {
     autoApprove: boolean,
     baseRef?: string,
     linkedIssues?: GithubIssue[],
+    assignedSkills?: AssignedSkill[],
   ) {
     const targetProjectId = taskModalProjectId || activeProjectId;
     const targetProject = projects.find((p) => p.id === targetProjectId);
@@ -730,6 +775,7 @@ export function App() {
       useWorktree,
       autoApprove,
       linkedIssues: linkedIssueNumbers,
+      assignedSkills: assignedSkills ?? null,
     });
 
     if (saveResp.success && saveResp.data) {
@@ -871,46 +917,53 @@ export function App() {
 
   async function handleStageFile(filePath: string) {
     if (!activeTask) return;
-    await window.electronAPI.gitStageFile({ cwd: activeTask.path, filePath });
-    refreshGitStatus(activeTask.path);
+    const { id: taskId, path: taskPath } = activeTask;
+    await window.electronAPI.gitStageFile({ cwd: taskPath, filePath });
+    refreshGitStatus(taskPath, taskId);
   }
 
   async function handleUnstageFile(filePath: string) {
     if (!activeTask) return;
-    await window.electronAPI.gitUnstageFile({ cwd: activeTask.path, filePath });
-    refreshGitStatus(activeTask.path);
+    const { id: taskId, path: taskPath } = activeTask;
+    await window.electronAPI.gitUnstageFile({ cwd: taskPath, filePath });
+    refreshGitStatus(taskPath, taskId);
   }
 
   async function handleStageAll() {
     if (!activeTask) return;
-    await window.electronAPI.gitStageAll(activeTask.path);
-    refreshGitStatus(activeTask.path);
+    const { id: taskId, path: taskPath } = activeTask;
+    await window.electronAPI.gitStageAll(taskPath);
+    refreshGitStatus(taskPath, taskId);
   }
 
   async function handleUnstageAll() {
     if (!activeTask) return;
-    await window.electronAPI.gitUnstageAll(activeTask.path);
-    refreshGitStatus(activeTask.path);
+    const { id: taskId, path: taskPath } = activeTask;
+    await window.electronAPI.gitUnstageAll(taskPath);
+    refreshGitStatus(taskPath, taskId);
   }
 
   async function handleCommit(message: string) {
     if (!activeTask) return;
-    const res = await window.electronAPI.gitCommit({ cwd: activeTask.path, message });
+    const { id: taskId, path: taskPath } = activeTask;
+    const res = await window.electronAPI.gitCommit({ cwd: taskPath, message });
     if (!res.success) throw new Error(res.error || 'Commit failed');
-    refreshGitStatus(activeTask.path);
+    refreshGitStatus(taskPath, taskId);
   }
 
   async function handlePush() {
     if (!activeTask) return;
-    const res = await window.electronAPI.gitPush(activeTask.path);
+    const { id: taskId, path: taskPath } = activeTask;
+    const res = await window.electronAPI.gitPush(taskPath);
     if (!res.success) throw new Error(res.error || 'Push failed');
-    refreshGitStatus(activeTask.path);
+    refreshGitStatus(taskPath, taskId);
   }
 
   async function handleDiscardFile(filePath: string) {
     if (!activeTask) return;
-    await window.electronAPI.gitDiscardFile({ cwd: activeTask.path, filePath });
-    refreshGitStatus(activeTask.path);
+    const { id: taskId, path: taskPath } = activeTask;
+    await window.electronAPI.gitDiscardFile({ cwd: taskPath, filePath });
+    refreshGitStatus(taskPath, taskId);
   }
 
   async function handleViewDiff(filePath: string, staged: boolean) {
@@ -1047,6 +1100,11 @@ export function App() {
               onToggleCollapse={toggleSidebar}
               taskActivity={taskActivity}
               remoteControlStates={remoteControlStates}
+              skills={skills}
+              agrAvailable={agrAvailable}
+              onCreateSkill={() => setShowCreateSkill(true)}
+              onEditSkill={(skill) => setEditingSkill(skill)}
+              onDeleteSkill={handleDeleteSkill}
             />
           </ShellDrawerWrapper>
         </Panel>
@@ -1091,6 +1149,7 @@ export function App() {
                 activeTaskId={activeTaskId}
                 taskActivity={taskActivity}
                 remoteControlStates={remoteControlStates}
+                skills={skills}
                 onSelectTask={setActiveTaskId}
                 onEnableRemoteControl={(taskId) => setRemoteControlModalPtyId(taskId)}
                 extraTabs={activeTask ? (extraTabsByTask[activeTask.id] || []) : []}
@@ -1181,6 +1240,7 @@ export function App() {
           projectPath={
             projects.find((p) => p.id === (taskModalProjectId || activeProjectId))?.path ?? ''
           }
+          skills={skills}
           onClose={() => setShowTaskModal(false)}
           onCreate={handleCreateTask}
         />
@@ -1250,6 +1310,35 @@ export function App() {
           task={deleteTaskTarget}
           onClose={() => setDeleteTaskTarget(null)}
           onConfirm={handleDeleteTaskConfirm}
+        />
+      )}
+
+      {showCreateSkill && (
+        <CreateSkillModal
+          activeProjectPath={activeProject?.path ?? null}
+          agrAvailable={agrAvailable}
+          onClose={() => setShowCreateSkill(false)}
+          onCreated={() => {
+            setShowCreateSkill(false);
+            loadSkills();
+          }}
+          onAgrInstalled={() => {
+            loadSkills();
+          }}
+        />
+      )}
+
+      {editingSkill && (
+        <SkillEditorModal
+          skill={editingSkill}
+          onClose={() => setEditingSkill(null)}
+          onDeleted={() => {
+            setEditingSkill(null);
+            loadSkills();
+          }}
+          onSaved={() => {
+            loadSkills();
+          }}
         />
       )}
 
