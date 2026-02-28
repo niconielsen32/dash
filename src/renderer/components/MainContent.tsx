@@ -1,7 +1,7 @@
 import React from 'react';
 import { TerminalPane } from './TerminalPane';
-import { Terminal, FolderOpen, GitBranch, Globe } from 'lucide-react';
-import type { Project, Task, RemoteControlState } from '../../shared/types';
+import { Terminal, FolderOpen, GitBranch, Globe, Sparkles } from 'lucide-react';
+import type { Project, Task, RemoteControlState, Skill } from '../../shared/types';
 
 /** Convert a git remote URL (SSH or HTTPS) to a GitHub issues base URL */
 function issueUrl(remote: string | null, num: number): string | null {
@@ -23,6 +23,7 @@ interface MainContentProps {
   activeTaskId?: string | null;
   taskActivity?: Record<string, 'busy' | 'idle' | 'waiting'>;
   remoteControlStates?: Record<string, RemoteControlState>;
+  skills?: Skill[];
   onSelectTask?: (id: string) => void;
   onEnableRemoteControl?: (taskId: string) => void;
 }
@@ -35,6 +36,7 @@ export function MainContent({
   activeTaskId,
   taskActivity = {},
   remoteControlStates = {},
+  skills = [],
   onSelectTask,
   onEnableRemoteControl,
 }: MainContentProps) {
@@ -160,6 +162,28 @@ export function MainContent({
                   </span>
                 );
               })}
+            </div>
+          )}
+          {activeTask.assignedSkills && activeTask.assignedSkills.length > 0 && (
+            <div className="flex items-center gap-1">
+              {activeTask.assignedSkills.slice(0, 2).map((as) => {
+                const skill = skills.find((s) => s.id === as.skillId && s.scope === as.scope);
+                return (
+                  <span
+                    key={`${as.scope}:${as.skillId}`}
+                    className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-primary/10 text-primary/70 text-[10px] font-medium"
+                    title={skill?.description}
+                  >
+                    <Sparkles size={9} strokeWidth={2} />
+                    {skill?.name ?? as.skillId}
+                  </span>
+                );
+              })}
+              {activeTask.assignedSkills.length > 2 && (
+                <span className="px-1.5 py-0.5 rounded-full bg-accent/60 text-muted-foreground/50 text-[10px]">
+                  +{activeTask.assignedSkills.length - 2}
+                </span>
+              )}
             </div>
           )}
           {taskActivity[activeTask.id] && (

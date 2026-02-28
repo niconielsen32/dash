@@ -61,6 +61,7 @@ export function runMigrations(): void {
   // Migrations for existing databases
   try { rawDb.exec(`ALTER TABLE tasks ADD COLUMN auto_approve INTEGER DEFAULT 0`); } catch { /* already exists */ }
   try { rawDb.exec(`ALTER TABLE tasks ADD COLUMN linked_issues TEXT`); } catch { /* already exists */ }
+  try { rawDb.exec(`ALTER TABLE tasks ADD COLUMN assigned_skills TEXT`); } catch { /* already exists */ }
 
   rawDb.pragma('foreign_keys = ON');
 }

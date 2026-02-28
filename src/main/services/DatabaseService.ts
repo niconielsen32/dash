@@ -80,6 +80,7 @@ export class DatabaseService {
     const now = new Date().toISOString();
 
     const linkedIssuesJson = data.linkedIssues ? JSON.stringify(data.linkedIssues) : null;
+    const assignedSkillsJson = data.assignedSkills ? JSON.stringify(data.assignedSkills) : null;
 
     db.insert(tasks)
       .values({
@@ -92,6 +93,7 @@ export class DatabaseService {
         useWorktree: data.useWorktree ?? true,
         autoApprove: data.autoApprove ?? false,
         linkedIssues: linkedIssuesJson,
+        assignedSkills: assignedSkillsJson,
         createdAt: now,
         updatedAt: now,
       })
@@ -103,6 +105,7 @@ export class DatabaseService {
           path: data.path,
           status: data.status ?? 'idle',
           linkedIssues: linkedIssuesJson,
+          assignedSkills: assignedSkillsJson,
           updatedAt: now,
         },
       })
@@ -203,6 +206,15 @@ export class DatabaseService {
       }
     }
 
+    let assignedSkills: import('@shared/types').AssignedSkill[] | null = null;
+    if (row.assignedSkills) {
+      try {
+        assignedSkills = JSON.parse(row.assignedSkills);
+      } catch {
+        // Corrupted JSON — ignore
+      }
+    }
+
     return {
       id: row.id,
       projectId: row.projectId,
@@ -213,6 +225,7 @@ export class DatabaseService {
       useWorktree: row.useWorktree ?? true,
       autoApprove: row.autoApprove ?? false,
       linkedIssues,
+      assignedSkills,
       archivedAt: row.archivedAt,
       createdAt: row.createdAt ?? '',
       updatedAt: row.updatedAt ?? '',

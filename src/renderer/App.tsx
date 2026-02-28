@@ -16,6 +16,8 @@ import { AddProjectModal } from './components/AddProjectModal';
 import { DeleteTaskModal } from './components/DeleteTaskModal';
 import { RemoteControlModal } from './components/RemoteControlModal';
 import { SettingsModal } from './components/SettingsModal';
+import { SkillEditorModal } from './components/SkillEditorModal';
+import { CreateSkillModal } from './components/CreateSkillModal';
 import { ToastContainer } from './components/Toast';
 import type {
   Project,
@@ -24,6 +26,8 @@ import type {
   DiffResult,
   GithubIssue,
   RemoteControlState,
+  Skill,
+  AssignedSkill,
 } from '../shared/types';
 import { loadKeybindings, saveKeybindings, matchesBinding } from './keybindings';
 import type { KeyBindingMap } from './keybindings';
@@ -95,6 +99,12 @@ export function App() {
     window.electronAPI.setCommitAttribution?.(commitAttribution);
   }, [commitAttribution]);
 
+  // Skills state
+  const [skills, setSkills] = useState<Skill[]>([]);
+  const [showCreateSkill, setShowCreateSkill] = useState(false);
+  const [editingSkill, setEditingSkill] = useState<Skill | null>(null);
+  const [agrAvailable, setAgrAvailable] = useState(false);
+
   // Activity state — keys are PTY IDs that have active sessions
   const [taskActivity, setTaskActivity] = useState<Record<string, 'busy' | 'idle' | 'waiting'>>({});
 
@@ -151,7 +161,17 @@ export function App() {
   // Load projects on mount
   useEffect(() => {
     loadProjects();
+    // Check agr availability once on mount
+    window.electronAPI.skillsAgrCheck().then((resp) => {
+      if (resp.success) setAgrAvailable(resp.data ?? false);
+    });
   }, []);
+
+  // Load skills when active project changes
+  useEffect(() => {
+    loadSkills();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeProjectId]);
 
   // Save all terminal snapshots when app is about to quit
   useEffect(() => {
@@ -520,6 +540,23 @@ export function App() {
     }
   }
 
+  async function loadSkills() {
+    const projectPath = projects.find((p) => p.id === activeProjectId)?.path;
+    const resp = await window.electronAPI.skillsList({ projectPath });
+    if (resp.success && resp.data) {
+      setSkills(resp.data);
+    }
+  }
+
+  function handleDeleteSkill(skill: Skill) {
+    if (!confirm(`Delete skill "${skill.name}"? This cannot be undone.`)) return;
+    window.electronAPI.skillsDelete({ skillDir: skill.path }).then((resp) => {
+      if (resp.success) {
+        loadSkills();
+      }
+    });
+  }
+
   async function refreshGitStatus(cwd: string) {
     setGitLoading(true);
     try {
@@ -624,6 +661,7 @@ export function App() {
     autoApprove: boolean,
     baseRef?: string,
     linkedIssues?: GithubIssue[],
+    assignedSkills?: AssignedSkill[],
   ) {
     const targetProjectId = taskModalProjectId || activeProjectId;
     const targetProject = projects.find((p) => p.id === targetProjectId);
@@ -668,6 +706,7 @@ export function App() {
       useWorktree,
       autoApprove,
       linkedIssues: linkedIssueNumbers,
+      assignedSkills: assignedSkills ?? null,
     });
 
     if (saveResp.success && saveResp.data) {
@@ -939,6 +978,11 @@ export function App() {
               onToggleCollapse={toggleSidebar}
               taskActivity={taskActivity}
               remoteControlStates={remoteControlStates}
+              skills={skills}
+              agrAvailable={agrAvailable}
+              onCreateSkill={() => setShowCreateSkill(true)}
+              onEditSkill={(skill) => setEditingSkill(skill)}
+              onDeleteSkill={handleDeleteSkill}
             />
           </ShellDrawerWrapper>
         </Panel>
@@ -976,6 +1020,7 @@ export function App() {
               activeTaskId={activeTaskId}
               taskActivity={taskActivity}
               remoteControlStates={remoteControlStates}
+              skills={skills}
               onSelectTask={setActiveTaskId}
               onEnableRemoteControl={(taskId) => setRemoteControlModalPtyId(taskId)}
             />
@@ -1060,6 +1105,7 @@ export function App() {
           projectPath={
             projects.find((p) => p.id === (taskModalProjectId || activeProjectId))?.path ?? ''
           }
+          skills={skills}
           onClose={() => setShowTaskModal(false)}
           onCreate={handleCreateTask}
         />
@@ -1129,6 +1175,35 @@ export function App() {
           task={deleteTaskTarget}
           onClose={() => setDeleteTaskTarget(null)}
           onConfirm={handleDeleteTaskConfirm}
+        />
+      )}
+
+      {showCreateSkill && (
+        <CreateSkillModal
+          activeProjectPath={activeProject?.path ?? null}
+          agrAvailable={agrAvailable}
+          onClose={() => setShowCreateSkill(false)}
+          onCreated={() => {
+            setShowCreateSkill(false);
+            loadSkills();
+          }}
+          onAgrInstalled={() => {
+            loadSkills();
+          }}
+        />
+      )}
+
+      {editingSkill && (
+        <SkillEditorModal
+          skill={editingSkill}
+          onClose={() => setEditingSkill(null)}
+          onDeleted={() => {
+            setEditingSkill(null);
+            loadSkills();
+          }}
+          onSaved={() => {
+            loadSkills();
+          }}
         />
       )}
 

@@ -12,6 +12,7 @@ import type {
   CommitGraphData,
   CommitDetail,
   RemoteControlState,
+  Skill,
 } from '../shared/types';
 
 export interface ElectronAPI {
@@ -211,6 +212,35 @@ export interface ElectronAPI {
   gitWatch: (args: { id: string; cwd: string }) => Promise<IpcResponse<void>>;
   gitUnwatch: (id: string) => Promise<IpcResponse<void>>;
   onGitFileChanged: (callback: (id: string) => void) => () => void;
+
+  // Skills
+  skillsList: (args: { projectPath?: string }) => Promise<IpcResponse<Skill[]>>;
+  skillsGetFile: (args: { skillDir: string; fileName: string }) => Promise<IpcResponse<string>>;
+  skillsCreate: (args: {
+    skillId: string;
+    name: string;
+    description: string;
+    content: string;
+    scope: 'global' | 'project';
+    projectPath?: string;
+  }) => Promise<IpcResponse<Skill>>;
+  skillsWriteFile: (args: {
+    skillDir: string;
+    fileName: string;
+    content: string;
+  }) => Promise<IpcResponse<void>>;
+  skillsDelete: (args: { skillDir: string }) => Promise<IpcResponse<void>>;
+  skillsDeleteFile: (args: { skillDir: string; fileName: string }) => Promise<IpcResponse<void>>;
+  skillsGetDir: (args: {
+    scope: 'global' | 'project';
+    projectPath?: string;
+  }) => Promise<IpcResponse<string>>;
+  skillsAgrCheck: () => Promise<IpcResponse<boolean>>;
+  skillsAgrInstall: (args: {
+    handle: string;
+    scope: 'global' | 'project';
+    projectPath?: string;
+  }) => Promise<IpcResponse<void>>;
 }
 
 declare global {

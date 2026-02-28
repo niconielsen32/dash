@@ -13,8 +13,10 @@ import {
   ChevronDown,
   PanelLeftClose,
   PanelLeftOpen,
+  Sparkles,
+  Download,
 } from 'lucide-react';
-import type { Project, Task, RemoteControlState } from '../../shared/types';
+import type { Project, Task, RemoteControlState, Skill } from '../../shared/types';
 import { IconButton } from './ui/IconButton';
 
 interface LeftSidebarProps {
@@ -36,6 +38,11 @@ interface LeftSidebarProps {
   onToggleCollapse: () => void;
   taskActivity: Record<string, 'busy' | 'idle' | 'waiting'>;
   remoteControlStates?: Record<string, RemoteControlState>;
+  skills: Skill[];
+  agrAvailable: boolean;
+  onCreateSkill: () => void;
+  onEditSkill: (skill: Skill) => void;
+  onDeleteSkill: (skill: Skill) => void;
 }
 
 export function LeftSidebar({
@@ -57,9 +64,15 @@ export function LeftSidebar({
   onToggleCollapse,
   taskActivity,
   remoteControlStates = {},
+  skills,
+  agrAvailable,
+  onCreateSkill,
+  onEditSkill,
+  onDeleteSkill,
 }: LeftSidebarProps) {
   const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(new Set());
   const [collapsedArchived, setCollapsedArchived] = useState<Set<string>>(new Set());
+  const [skillsCollapsed, setSkillsCollapsed] = useState(false);
 
   function toggleCollapse(projectId: string) {
     setCollapsedProjects((prev) => {
@@ -153,6 +166,19 @@ export function LeftSidebar({
         </div>
 
         <div className="w-6 border-t border-border/30 my-1" />
+
+        <button
+          onClick={onCreateSkill}
+          className="relative p-1.5 rounded-md hover:bg-accent/60 text-muted-foreground hover:text-foreground transition-colors titlebar-no-drag"
+          title={`Skills${skills.length > 0 ? ` (${skills.length})` : ''}`}
+        >
+          <Sparkles size={18} strokeWidth={1.5} />
+          {skills.length > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-primary/20 text-primary text-[9px] font-medium flex items-center justify-center leading-none">
+              {skills.length > 9 ? '9+' : skills.length}
+            </span>
+          )}
+        </button>
 
         <button
           onClick={onOpenSettings}
@@ -309,6 +335,7 @@ export function LeftSidebar({
                       {projectTasks.map((task) => {
                         const activity = taskActivity[task.id];
                         const isActiveTask = task.id === activeTaskId;
+                        const hasSkills = task.assignedSkills && task.assignedSkills.length > 0;
 
                         return (
                           <div
@@ -338,13 +365,20 @@ export function LeftSidebar({
 
                             <span className="truncate flex-1">{task.name}</span>
 
-                            {/* Right slot: branch icon by default, actions on hover */}
+                            {/* Right slot: branch/skills icons by default, actions on hover */}
                             <div className="flex items-center gap-0.5 flex-shrink-0">
                               {isActiveTask && (
                                 <GitBranch
                                   size={11}
                                   className="text-foreground/50 group-hover/task:hidden"
                                   strokeWidth={2}
+                                />
+                              )}
+                              {hasSkills && !isActiveTask && (
+                                <Sparkles
+                                  size={11}
+                                  className="text-primary/40 group-hover/task:hidden"
+                                  strokeWidth={1.8}
                                 />
                               )}
                               <div className="hidden group-hover/task:flex gap-0.5">
@@ -441,6 +475,85 @@ export function LeftSidebar({
             );
           })}
         </div>
+      </div>
+
+      {/* Skills section */}
+      <div className="border-t border-border/30 px-2 py-2">
+        {/* Skills header */}
+        <div className="flex items-center gap-1 px-1 mb-1">
+          <button
+            onClick={() => setSkillsCollapsed(!skillsCollapsed)}
+            className="p-0.5 rounded flex-shrink-0 text-muted-foreground/40 hover:text-foreground transition-colors"
+          >
+            {skillsCollapsed ? (
+              <ChevronRight size={13} strokeWidth={2} />
+            ) : (
+              <ChevronDown size={13} strokeWidth={2} />
+            )}
+          </button>
+          <Sparkles size={13} strokeWidth={1.8} className="text-muted-foreground/40 flex-shrink-0" />
+          <span className="text-[11px] font-medium text-muted-foreground/40 select-none flex-1">
+            Skills
+          </span>
+          {skills.length > 0 && (
+            <span className="text-[10px] text-muted-foreground/30 tabular-nums mr-0.5">
+              {skills.length}
+            </span>
+          )}
+          {agrAvailable && (
+            <IconButton onClick={onCreateSkill} title="Install from agr" size="sm">
+              <Download size={12} strokeWidth={2} />
+            </IconButton>
+          )}
+          <IconButton onClick={onCreateSkill} title="New skill" size="sm">
+            <Plus size={13} strokeWidth={2} />
+          </IconButton>
+        </div>
+
+        {/* Skills list */}
+        {!skillsCollapsed && (
+          <div className="space-y-px max-h-48 overflow-y-auto">
+            {skills.length === 0 ? (
+              <div className="px-2 py-3 text-center">
+                <p className="text-[10px] text-muted-foreground/30">
+                  No skills yet — click + to create
+                </p>
+              </div>
+            ) : (
+              skills.map((skill) => (
+                <div
+                  key={`${skill.scope}:${skill.id}`}
+                  className="group/skill flex items-center gap-2 pl-5 pr-2 py-[5px] rounded-md text-[12px] cursor-pointer text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-all duration-150"
+                  onClick={() => onEditSkill(skill)}
+                >
+                  <span className="truncate flex-1">{skill.name}</span>
+                  <span
+                    className={`flex-shrink-0 px-1 py-px rounded text-[9px] font-medium group-hover/skill:hidden ${
+                      skill.scope === 'global'
+                        ? 'bg-accent/60 text-muted-foreground/50'
+                        : 'bg-blue-500/10 text-blue-400/70'
+                    }`}
+                  >
+                    {skill.scope === 'global' ? 'global' : 'project'}
+                  </span>
+                  <div className="hidden group-hover/skill:flex flex-shrink-0">
+                    <IconButton
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDeleteSkill(skill);
+                      }}
+                      title="Delete skill"
+                      variant="destructive"
+                      size="sm"
+                    >
+                      <Trash2 size={11} strokeWidth={1.8} />
+                    </IconButton>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
       </div>
 
       {/* Settings */}
