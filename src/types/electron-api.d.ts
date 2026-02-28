@@ -150,6 +150,12 @@ export interface ElectronAPI {
   setCommitAttribution: (value: string | undefined) => void;
   getClaudeAttribution: (projectPath?: string) => Promise<IpcResponse<string | null>>;
 
+  // Clipboard
+  saveClipboardImage: (args: {
+    data: string;
+    type: string;
+  }) => Promise<IpcResponse<{ path: string }>>;
+
   // GitHub
   githubCheckAvailable: () => Promise<IpcResponse<boolean>>;
   githubSearchIssues: (cwd: string, query: string) => Promise<IpcResponse<GithubIssue[]>>;

@@ -2,7 +2,8 @@ import { ipcMain, dialog, app, shell, BrowserWindow, Notification } from 'electr
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { existsSync, readFileSync } from 'fs';
-import { homedir } from 'os';
+import { writeFile } from 'fs/promises';
+import { homedir, tmpdir } from 'os';
 import { join, resolve } from 'path';
 
 const execFileAsync = promisify(execFile);
@@ -151,6 +152,19 @@ export function registerAppIpc(): void {
   ipcMain.on('app:setCommitAttribution', async (_event, value: string | undefined) => {
     const { setCommitAttribution } = await import('../services/ptyManager');
     setCommitAttribution(value);
+  });
+
+  ipcMain.handle('app:saveClipboardImage', async (_event, args: { data: string; type: string }) => {
+    try {
+      const ext = args.type === 'image/jpeg' ? 'jpg' : 'png';
+      const filename = `dash-clipboard-${Date.now()}.${ext}`;
+      const filePath = join(tmpdir(), filename);
+      const buffer = Buffer.from(args.data, 'base64');
+      await writeFile(filePath, buffer);
+      return { success: true, data: { path: filePath } };
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
   });
 
   ipcMain.handle('app:detectClaude', async () => {

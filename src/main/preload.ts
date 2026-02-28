@@ -129,6 +129,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getClaudeAttribution: (projectPath?: string) =>
     ipcRenderer.invoke('app:getClaudeAttribution', projectPath),
 
+  // Clipboard
+  saveClipboardImage: (args: { data: string; type: string }) =>
+    ipcRenderer.invoke('app:saveClipboardImage', args),
+
   // GitHub
   githubCheckAvailable: () => ipcRenderer.invoke('github:check-available'),
   githubSearchIssues: (cwd: string, query: string) =>
