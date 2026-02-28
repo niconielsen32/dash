@@ -28,6 +28,8 @@ import type {
 import { loadKeybindings, saveKeybindings, matchesBinding } from './keybindings';
 import type { KeyBindingMap } from './keybindings';
 import { sessionRegistry } from './terminal/SessionRegistry';
+import { LayoutTemplate, LayoutGrid } from 'lucide-react';
+import { MultiTerminalGrid } from './components/MultiTerminalGrid';
 import { playNotificationSound, playPeonSound } from './sounds';
 import type { NotificationSound } from './sounds';
 
@@ -123,6 +125,9 @@ export function App() {
   const [changesPanelCollapsed, setChangesPanelCollapsed] = useState(() => {
     return localStorage.getItem('changesPanelCollapsed') === 'true';
   });
+  const [viewMode, setViewMode] = useState<'single' | 'grid'>(() => {
+    return (localStorage.getItem('viewMode') as 'single' | 'grid') || 'single';
+  });
 
   const sidebarPanelRef = useRef<ImperativePanelHandle>(null);
   const changesPanelRef = useRef<ImperativePanelHandle>(null);
@@ -147,6 +152,11 @@ export function App() {
   const activeProjectTasks = activeProjectId
     ? (tasksByProject[activeProjectId] || []).filter((t) => !t.archivedAt)
     : [];
+
+  // All tasks with active PTY sessions (for grid view)
+  const allTasksWithActivity = Object.values(tasksByProject)
+    .flat()
+    .filter((t) => !t.archivedAt && taskActivity[t.id] !== undefined);
 
   // Load projects on mount
   useEffect(() => {
@@ -870,9 +880,37 @@ export function App() {
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden">
       <div
-        className="titlebar-drag h-[38px] flex-shrink-0 border-b border-border/40"
+        className="titlebar-drag h-[38px] flex-shrink-0 border-b border-border/40 flex items-center px-3"
         style={{ background: 'hsl(var(--surface-1))' }}
-      />
+      >
+        <div
+          className="ml-auto flex items-center gap-0.5"
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+        >
+          {(
+            [
+              { mode: 'single', title: 'Single view', Icon: LayoutTemplate },
+              { mode: 'grid', title: 'Grid view', Icon: LayoutGrid },
+            ] as const
+          ).map(({ mode, title, Icon }) => (
+            <button
+              key={mode}
+              onClick={() => {
+                setViewMode(mode);
+                localStorage.setItem('viewMode', mode);
+              }}
+              title={title}
+              className={`p-1.5 rounded-md transition-colors duration-150 ${
+                viewMode === mode
+                  ? 'bg-primary/10 text-primary'
+                  : 'text-muted-foreground/40 hover:text-foreground hover:bg-accent/60'
+              }`}
+            >
+              <Icon size={14} strokeWidth={1.8} />
+            </button>
+          ))}
+        </div>
+      </div>
 
       <PanelGroup direction="horizontal" className="flex-1">
         <Panel
@@ -968,17 +1006,25 @@ export function App() {
               setTimeout(() => setShellDrawerAnimating(false), 200);
             }}
           >
-            <MainContent
-              activeTask={activeTask}
-              activeProject={activeProject}
-              sidebarCollapsed={sidebarCollapsed}
-              tasks={activeProjectTasks}
-              activeTaskId={activeTaskId}
-              taskActivity={taskActivity}
-              remoteControlStates={remoteControlStates}
-              onSelectTask={setActiveTaskId}
-              onEnableRemoteControl={(taskId) => setRemoteControlModalPtyId(taskId)}
-            />
+            {viewMode === 'grid' ? (
+              <MultiTerminalGrid
+                tasks={allTasksWithActivity}
+                projects={projects}
+                taskActivity={taskActivity}
+              />
+            ) : (
+              <MainContent
+                activeTask={activeTask}
+                activeProject={activeProject}
+                sidebarCollapsed={sidebarCollapsed}
+                tasks={activeProjectTasks}
+                activeTaskId={activeTaskId}
+                taskActivity={taskActivity}
+                remoteControlStates={remoteControlStates}
+                onSelectTask={setActiveTaskId}
+                onEnableRemoteControl={(taskId) => setRemoteControlModalPtyId(taskId)}
+              />
+            )}
           </ShellDrawerWrapper>
         </Panel>
 
