@@ -1,9 +1,21 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { X, GitBranch, Zap, ChevronDown, Loader2, AlertCircle, Search, Github, Check } from 'lucide-react';
-import type { BranchInfo, GithubIssue } from '../../shared/types';
+import {
+  X,
+  GitBranch,
+  Zap,
+  ChevronDown,
+  Loader2,
+  AlertCircle,
+  Search,
+  Github,
+  Check,
+  Sparkles,
+} from 'lucide-react';
+import type { BranchInfo, GithubIssue, Skill, AssignedSkill } from '../../shared/types';
 
 interface TaskModalProps {
   projectPath: string;
+  skills: Skill[];
   onClose: () => void;
   onCreate: (
     name: string,
@@ -11,13 +23,19 @@ interface TaskModalProps {
     autoApprove: boolean,
     baseRef?: string,
     linkedIssues?: GithubIssue[],
+    assignedSkills?: AssignedSkill[],
   ) => void;
 }
 
-export function TaskModal({ projectPath, onClose, onCreate }: TaskModalProps) {
+export function TaskModal({ projectPath, skills, onClose, onCreate }: TaskModalProps) {
   const [name, setName] = useState('');
   const [useWorktree, setUseWorktree] = useState(true);
   const [autoApprove, setAutoApprove] = useState(() => localStorage.getItem('yoloMode') === 'true');
+
+  // Skills assignment state
+  const [selectedSkills, setSelectedSkills] = useState<AssignedSkill[]>([]);
+  const [skillDropdownOpen, setSkillDropdownOpen] = useState(false);
+  const skillDropdownRef = useRef<HTMLDivElement>(null);
 
   // Branch selector state
   const [branches, setBranches] = useState<BranchInfo[]>([]);
@@ -65,6 +83,9 @@ export function TaskModal({ projectPath, onClose, onCreate }: TaskModalProps) {
       }
       if (issueDropdownRef.current && !issueDropdownRef.current.contains(e.target as Node)) {
         setIssueDropdownOpen(false);
+      }
+      if (skillDropdownRef.current && !skillDropdownRef.current.contains(e.target as Node)) {
+        setSkillDropdownOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -155,9 +176,23 @@ export function TaskModal({ projectPath, onClose, onCreate }: TaskModalProps) {
         autoApprove,
         baseRef,
         selectedIssues.length > 0 ? selectedIssues : undefined,
+        selectedSkills.length > 0 ? selectedSkills : undefined,
       );
       onClose();
     }
+  }
+
+  function toggleSkill(skill: Skill) {
+    const key = `${skill.scope}:${skill.id}`;
+    setSelectedSkills((prev) => {
+      const exists = prev.some((s) => `${s.scope}:${s.skillId}` === key);
+      if (exists) return prev.filter((s) => `${s.scope}:${s.skillId}` !== key);
+      return [...prev, { skillId: skill.id, scope: skill.scope, projectPath: skill.projectPath }];
+    });
+  }
+
+  function removeSkill(key: string) {
+    setSelectedSkills((prev) => prev.filter((s) => `${s.scope}:${s.skillId}` !== key));
   }
 
   function toggleIssue(issue: GithubIssue) {
@@ -278,9 +313,7 @@ export function TaskModal({ projectPath, onClose, onCreate }: TaskModalProps) {
                         setBranchSearch('');
                         setDropdownOpen(true);
                       }}
-                      placeholder={
-                        branchLoading ? 'Fetching branches...' : 'Search branches...'
-                      }
+                      placeholder={branchLoading ? 'Fetching branches...' : 'Search branches...'}
                       disabled={branchLoading}
                       className="flex-1 bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground/30 outline-none disabled:opacity-50"
                     />
@@ -410,9 +443,7 @@ export function TaskModal({ projectPath, onClose, onCreate }: TaskModalProps) {
                         </div>
                       ) : (
                         issueResults.map((issue) => {
-                          const isSelected = selectedIssues.some(
-                            (i) => i.number === issue.number,
-                          );
+                          const isSelected = selectedIssues.some((i) => i.number === issue.number);
                           return (
                             <button
                               key={issue.number}
@@ -432,7 +463,11 @@ export function TaskModal({ projectPath, onClose, onCreate }: TaskModalProps) {
                                 }`}
                               >
                                 {isSelected && (
-                                  <Check size={10} strokeWidth={3} className="text-primary-foreground" />
+                                  <Check
+                                    size={10}
+                                    strokeWidth={3}
+                                    className="text-primary-foreground"
+                                  />
                                 )}
                               </span>
                               <div className="flex-1 min-w-0">
@@ -461,6 +496,122 @@ export function TaskModal({ projectPath, onClose, onCreate }: TaskModalProps) {
                           );
                         })
                       )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Skills assignment */}
+          {skills.length > 0 && (
+            <div className="mb-4" ref={skillDropdownRef}>
+              <label className="block text-[12px] font-medium text-muted-foreground/70 mb-2 flex items-center gap-1.5">
+                <Sparkles size={12} strokeWidth={1.8} className="text-muted-foreground/40" />
+                Skills
+              </label>
+
+              {/* Selected skills pills */}
+              {selectedSkills.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {selectedSkills.map((s) => {
+                    const key = `${s.scope}:${s.skillId}`;
+                    const skill = skills.find((sk) => sk.id === s.skillId && sk.scope === s.scope);
+                    return (
+                      <span
+                        key={key}
+                        className="flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-full text-[11px] bg-primary/15 text-foreground/80 border border-primary/20"
+                      >
+                        <Sparkles size={10} strokeWidth={1.8} className="text-primary/60" />
+                        {skill?.name ?? s.skillId}
+                        <button
+                          type="button"
+                          onClick={() => removeSkill(key)}
+                          className="ml-0.5 rounded-full hover:bg-primary/20 p-0.5 text-muted-foreground/50 hover:text-foreground transition-colors"
+                        >
+                          <X size={9} strokeWidth={2.5} />
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Skill picker */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setSkillDropdownOpen(!skillDropdownOpen)}
+                  className="flex items-center gap-2 w-full px-3.5 py-2 rounded-lg bg-background border border-input/60 text-[13px] text-muted-foreground/50 hover:text-foreground hover:border-border transition-all duration-150"
+                >
+                  <Search size={12} strokeWidth={1.8} className="text-muted-foreground/40" />
+                  <span className="flex-1 text-left">
+                    {selectedSkills.length === 0
+                      ? 'Assign skills...'
+                      : `${selectedSkills.length} skill${selectedSkills.length > 1 ? 's' : ''} selected`}
+                  </span>
+                  <ChevronDown
+                    size={13}
+                    className={`text-muted-foreground/40 transition-transform duration-150 ${skillDropdownOpen ? 'rotate-180' : ''}`}
+                  />
+                </button>
+
+                {skillDropdownOpen && (
+                  <div className="absolute z-50 mt-1 w-full bg-card border border-border/60 rounded-lg shadow-xl shadow-black/30 overflow-hidden">
+                    <div className="max-h-[180px] overflow-y-auto">
+                      {skills.map((skill) => {
+                        const key = `${skill.scope}:${skill.id}`;
+                        const isSelected = selectedSkills.some(
+                          (s) => `${s.scope}:${s.skillId}` === key,
+                        );
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() => toggleSkill(skill)}
+                            className={`w-full flex items-start gap-2 px-3 py-2 text-left hover:bg-accent/60 transition-colors duration-100 ${
+                              isSelected ? 'bg-primary/5' : ''
+                            }`}
+                          >
+                            <span
+                              className={`mt-0.5 w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-colors duration-150 ${
+                                isSelected
+                                  ? 'bg-primary border-primary'
+                                  : 'border-border hover:border-foreground/40'
+                              }`}
+                            >
+                              {isSelected && (
+                                <Check
+                                  size={10}
+                                  strokeWidth={3}
+                                  className="text-primary-foreground"
+                                />
+                              )}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[12px] text-foreground/80 truncate">
+                                  {skill.name}
+                                </span>
+                                <span
+                                  className={`px-1 py-px rounded text-[9px] shrink-0 ${
+                                    skill.scope === 'global'
+                                      ? 'bg-accent/60 text-muted-foreground/50'
+                                      : 'bg-blue-500/10 text-blue-400/70'
+                                  }`}
+                                >
+                                  {skill.scope}
+                                </span>
+                              </div>
+                              {skill.description && (
+                                <p className="text-[11px] text-muted-foreground/40 truncate mt-0.5">
+                                  {skill.description}
+                                </p>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
