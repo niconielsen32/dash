@@ -31,7 +31,8 @@ export function createWindow(): BrowserWindow {
   });
 
   if (isDev) {
-    mainWindow.loadURL('http://localhost:3000');
+    const devPort = process.env.DEV_PORT || '3000';
+    mainWindow.loadURL(`http://localhost:${devPort}`);
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   } else {
     mainWindow.loadFile(path.join(__dirname, '..', '..', 'renderer', 'index.html'));
