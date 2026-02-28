@@ -69,15 +69,36 @@ export function TerminalPane({ id, cwd, autoApprove, shellOnly }: TerminalPanePr
         setIsDragOver(true);
       }}
       onDragLeave={() => setIsDragOver(false)}
-      onDrop={(e) => {
+      onDrop={async (e) => {
         e.preventDefault();
         setIsDragOver(false);
-        const files = e.dataTransfer.files;
-        if (files.length > 0) {
-          const paths = Array.from(files).map((f) => (f as File & { path: string }).path);
-          const session = sessionRegistry.get(id);
-          if (session) {
-            session.writeInput(paths.join(' '));
+        const session = sessionRegistry.get(id);
+        if (!session) return;
+
+        // Files from Finder — use native path directly
+        const files = Array.from(e.dataTransfer.files) as (File & { path: string })[];
+        if (files.length > 0 && files[0].path) {
+          session.writeInput(files.map((f) => f.path).join(' '));
+          return;
+        }
+
+        // Image data dragged from browser/screenshot tools without a file path
+        const items = Array.from(e.dataTransfer.items);
+        const imageItem = items.find(
+          (item) => item.kind === 'file' && item.type.startsWith('image/'),
+        );
+        if (imageItem) {
+          const blob = imageItem.getAsFile();
+          if (blob) {
+            const arrayBuffer = await blob.arrayBuffer();
+            const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+            const result = await window.electronAPI.saveClipboardImage({
+              data: base64,
+              type: imageItem.type,
+            });
+            if (result.success && result.data) {
+              session.writeInput(result.data.path);
+            }
           }
         }
       }}
@@ -137,7 +158,7 @@ export function TerminalPane({ id, cwd, autoApprove, shellOnly }: TerminalPanePr
       {isDragOver && (
         <div className="absolute inset-0 z-10 flex items-center justify-center bg-primary/5 pointer-events-none animate-fade-in">
           <div className="px-4 py-2 rounded-lg bg-primary/15 text-primary text-[12px] font-medium">
-            Drop files to paste paths
+            Drop files or images to paste paths
           </div>
         </div>
       )}
