@@ -52,6 +52,7 @@ export function ShellDrawerWrapper({
         onExpand={onExpand}
       >
         <TerminalDrawer
+          taskId={taskId}
           cwd={cwd}
           collapsed={collapsed}
           onCollapse={() => {
