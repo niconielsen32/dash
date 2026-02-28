@@ -212,6 +212,7 @@ export function MainContent({
           key={activeTask.id}
           id={activeTask.id}
           cwd={activeTask.path}
+          projectPath={activeTask.useWorktree && activeProject ? activeProject.path : undefined}
           autoApprove={activeTask.autoApprove}
         />
       </div>

@@ -1,5 +1,38 @@
-import { ipcMain } from 'electron';
+import { ipcMain, BrowserWindow } from 'electron';
+import * as fs from 'fs';
 import { SkillsService } from '../services/SkillsService';
+
+// ── Skills directory watcher ─────────────────────────────────
+const SKILLS_DEBOUNCE_MS = 600;
+interface SkillWatchEntry { watcher: fs.FSWatcher; timer: ReturnType<typeof setTimeout> | null }
+const skillWatchers = new Map<string, SkillWatchEntry>();
+
+function watchSkillsDir(id: string, dir: string): void {
+  if (skillWatchers.has(id)) return;
+  try {
+    const watcher = fs.watch(dir, { recursive: true }, () => {
+      const entry = skillWatchers.get(id);
+      if (!entry) return;
+      if (entry.timer) clearTimeout(entry.timer);
+      entry.timer = setTimeout(() => {
+        entry.timer = null;
+        for (const win of BrowserWindow.getAllWindows()) {
+          if (!win.isDestroyed()) win.webContents.send('skills:changed');
+        }
+      }, SKILLS_DEBOUNCE_MS);
+    });
+    watcher.on('error', () => { unwatchSkillsDir(id); });
+    skillWatchers.set(id, { watcher, timer: null });
+  } catch { /* dir doesn't exist yet */ }
+}
+
+function unwatchSkillsDir(id: string): void {
+  const entry = skillWatchers.get(id);
+  if (!entry) return;
+  if (entry.timer) clearTimeout(entry.timer);
+  try { entry.watcher.close(); } catch { /* already closed */ }
+  skillWatchers.delete(id);
+}
 
 export function registerSkillsIpc(): void {
   ipcMain.handle('skills:list', async (_event, args: { projectPath?: string }) => {
@@ -114,6 +147,32 @@ export function registerSkillsIpc(): void {
     ) => {
       try {
         await SkillsService.agrInstall(args.handle, args.scope, args.projectPath);
+        return { success: true };
+      } catch (err) {
+        return { success: false, error: String(err) };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    'skills:moveSkill',
+    async (_event, args: { oldDir: string; newDir: string }) => {
+      try {
+        await SkillsService.moveSkill(args.oldDir, args.newDir);
+        return { success: true };
+      } catch (err) {
+        return { success: false, error: String(err) };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    'skills:watchDirs',
+    async (_event, args: { globalDir: string; projectDir?: string }) => {
+      try {
+        watchSkillsDir('skills:global', args.globalDir);
+        if (args.projectDir) watchSkillsDir('skills:project', args.projectDir);
+        else unwatchSkillsDir('skills:project');
         return { success: true };
       } catch (err) {
         return { success: false, error: String(err) };

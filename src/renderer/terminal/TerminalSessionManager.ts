@@ -44,6 +44,7 @@ export class TerminalSessionManager {
   private lastPtyRows = 0;
   readonly shellOnly: boolean;
   private themeId: string;
+  private projectPath: string | undefined;
   constructor(opts: {
     id: string;
     cwd: string;
@@ -51,6 +52,7 @@ export class TerminalSessionManager {
     isDark?: boolean;
     shellOnly?: boolean;
     themeId?: string;
+    projectPath?: string;
   }) {
     this.id = opts.id;
     this.cwd = opts.cwd;
@@ -59,6 +61,7 @@ export class TerminalSessionManager {
     this.isDark = opts.isDark ?? true;
     this.shellOnly = opts.shellOnly ?? false;
     this.themeId = opts.themeId ?? 'default';
+    this.projectPath = opts.projectPath;
 
     this.terminal = new Terminal({
       scrollback: 100_000,
@@ -563,6 +566,7 @@ export class TerminalSessionManager {
     const resp = await window.electronAPI.ptyStartDirect({
       id: this.id,
       cwd: this.cwd,
+      projectPath: this.projectPath,
       cols,
       rows,
       autoApprove: this.autoApprove,

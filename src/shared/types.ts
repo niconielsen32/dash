@@ -220,4 +220,12 @@ export interface Skill {
   projectPath?: string; // only for project-scoped skills
   path: string;        // absolute path to skill directory
   files: string[];     // relative paths of all files in the skill dir
+  // optional parsed frontmatter fields
+  argumentHint?: string;             // argument-hint
+  disableModelInvocation?: boolean;  // disable-model-invocation: true
+  userInvocable?: boolean;           // user-invocable (default: true)
+  allowedTools?: string[];           // allowed-tools (comma-separated list)
+  model?: string;                    // model override
+  context?: 'fork';                  // context: fork → subagent
+  agent?: string;                    // agent type when context: fork
 }

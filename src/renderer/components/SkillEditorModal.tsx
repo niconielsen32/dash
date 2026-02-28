@@ -1,16 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { X, FileText, Plus, Trash2, Save, Sparkles, Loader2, AlertCircle, ChevronRight, Folder } from 'lucide-react';
+import { X, FileText, Plus, Trash2, Save, Sparkles, Loader2, AlertCircle, ChevronRight, Folder, ArrowUpDown } from 'lucide-react';
 import type { Skill } from '../../shared/types';
 
 interface SkillEditorModalProps {
   skill: Skill;
+  activeProjectPath?: string | null;
   onClose: () => void;
   onDeleted: () => void;
   onSaved: () => void;
 }
 
-
-export function SkillEditorModal({ skill, onClose, onDeleted, onSaved }: SkillEditorModalProps) {
+export function SkillEditorModal({ skill, activeProjectPath, onClose, onDeleted, onSaved }: SkillEditorModalProps) {
   const [selectedFile, setSelectedFile] = useState<string | null>(
     skill.files.includes('SKILL.md') ? 'SKILL.md' : skill.files[0] ?? null,
   );
@@ -21,6 +21,7 @@ export function SkillEditorModal({ skill, onClose, onDeleted, onSaved }: SkillEd
   const [isDirty, setIsDirty] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [moving, setMoving] = useState(false);
   const [showAddFile, setShowAddFile] = useState(false);
   const [newFileName, setNewFileName] = useState('');
   const [files, setFiles] = useState<string[]>(skill.files);
@@ -94,6 +95,30 @@ export function SkillEditorModal({ skill, onClose, onDeleted, onSaved }: SkillEd
     } catch {
       setDeleting(false);
       setConfirmDelete(false);
+    }
+  };
+
+  const handleMove = async () => {
+    const targetPath = skill.scope === 'global'
+      ? activeProjectPath
+        ? `${activeProjectPath}/.claude/skills/${skill.id}`
+        : null
+      : `${process.env.HOME || ''}/.claude/skills/${skill.id}`;
+    if (!targetPath) return;
+    const label = skill.scope === 'global' ? 'project' : 'global';
+    if (!confirm(`Move "${skill.name}" to ${label} skills?`)) return;
+    setMoving(true);
+    setError(null);
+    try {
+      const resp = await window.electronAPI.skillsMoveSkill({ oldDir: skill.path, newDir: targetPath });
+      if (resp.success) {
+        onDeleted(); // closes modal + reloads list
+      } else {
+        setError(resp.error ?? 'Failed to move skill');
+        setMoving(false);
+      }
+    } catch {
+      setMoving(false);
     }
   };
 
@@ -172,6 +197,34 @@ export function SkillEditorModal({ skill, onClose, onDeleted, onSaved }: SkillEd
             <X size={15} strokeWidth={2} />
           </button>
         </div>
+
+        {/* Frontmatter chips — only shown when optional fields are set */}
+        {(skill.argumentHint || skill.disableModelInvocation || skill.userInvocable === false ||
+          skill.allowedTools?.length || skill.model || skill.context || skill.agent) && (
+          <div className="px-5 py-1.5 border-b border-border/30 flex flex-wrap gap-x-3 gap-y-1">
+            {skill.argumentHint && (
+              <span className="text-[11px] text-muted-foreground/50 font-mono">argument-hint: <span className="text-foreground/60">{skill.argumentHint}</span></span>
+            )}
+            {skill.disableModelInvocation && (
+              <span className="text-[11px] text-muted-foreground/50">disable-model-invocation: <span className="text-amber-400/70">true</span></span>
+            )}
+            {skill.userInvocable === false && (
+              <span className="text-[11px] text-muted-foreground/50">user-invocable: <span className="text-amber-400/70">false</span></span>
+            )}
+            {skill.allowedTools && skill.allowedTools.length > 0 && (
+              <span className="text-[11px] text-muted-foreground/50">allowed-tools: <span className="text-foreground/60">{skill.allowedTools.join(', ')}</span></span>
+            )}
+            {skill.model && (
+              <span className="text-[11px] text-muted-foreground/50">model: <span className="text-foreground/60">{skill.model}</span></span>
+            )}
+            {skill.context && (
+              <span className="text-[11px] text-muted-foreground/50">context: <span className="text-blue-400/70">{skill.context}</span></span>
+            )}
+            {skill.agent && (
+              <span className="text-[11px] text-muted-foreground/50">agent: <span className="text-foreground/60">{skill.agent}</span></span>
+            )}
+          </div>
+        )}
 
         {/* Body */}
         <div className="flex flex-1 min-h-0">
@@ -340,6 +393,20 @@ export function SkillEditorModal({ skill, onClose, onDeleted, onSaved }: SkillEd
               className="px-3 py-1.5 rounded-lg text-[12px] text-muted-foreground/60 hover:text-foreground hover:bg-accent/60 transition-all duration-150"
             >
               Cancel
+            </button>
+          )}
+
+          {/* Move scope button — only when not in delete-confirm flow */}
+          {!confirmDelete && (skill.scope === 'project' || (skill.scope === 'global' && activeProjectPath)) && (
+            <button
+              type="button"
+              onClick={handleMove}
+              disabled={moving}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] text-muted-foreground/50 hover:text-foreground hover:bg-accent/60 transition-all duration-150"
+              title={skill.scope === 'global' ? `Move to project scope` : 'Move to global scope'}
+            >
+              {moving ? <Loader2 size={12} className="animate-spin" /> : <ArrowUpDown size={12} strokeWidth={2} />}
+              {skill.scope === 'global' ? 'Move to project' : 'Move to global'}
             </button>
           )}
 

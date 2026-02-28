@@ -284,6 +284,7 @@ function writeHookSettings(cwd: string, ptyId: string): void {
 export async function startDirectPty(options: {
   id: string;
   cwd: string;
+  projectPath?: string;
   cols: number;
   rows: number;
   autoApprove?: boolean;
@@ -324,6 +325,10 @@ export async function startDirectPty(options: {
   }
   if (options.autoApprove) {
     args.push('--dangerously-skip-permissions');
+  }
+  // Make project-scoped skills available inside worktrees
+  if (options.projectPath && options.projectPath !== options.cwd) {
+    args.push('--add-dir', options.projectPath);
   }
   const env = buildDirectEnv(options.isDark ?? true);
 

@@ -15,6 +15,7 @@ import {
   PanelLeftOpen,
   Sparkles,
   Download,
+  ExternalLink,
 } from 'lucide-react';
 import type { Project, Task, RemoteControlState, Skill } from '../../shared/types';
 import { IconButton } from './ui/IconButton';
@@ -500,6 +501,13 @@ export function LeftSidebar({
               {skills.length}
             </span>
           )}
+          <IconButton
+            onClick={() => window.electronAPI.openExternal('https://github.com/anthropics/skills')}
+            title="Browse community skills"
+            size="sm"
+          >
+            <ExternalLink size={11} strokeWidth={2} />
+          </IconButton>
           {agrAvailable && (
             <IconButton onClick={onCreateSkill} title="Install from agr" size="sm">
               <Download size={12} strokeWidth={2} />
