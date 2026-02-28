@@ -1097,6 +1097,7 @@ export function App() {
             enabled={shellDrawerEnabled && shellDrawerPosition === 'left' && !sidebarCollapsed}
             taskId={activeTask?.id ?? null}
             cwd={activeTask?.path ?? null}
+            projectPath={activeProject?.path ?? null}
             collapsed={shellDrawerCollapsed}
             panelRef={shellDrawerPanelRef}
             animating={shellDrawerAnimating}
@@ -1155,6 +1156,7 @@ export function App() {
             enabled={shellDrawerEnabled && shellDrawerPosition === 'main'}
             taskId={activeTask?.id ?? null}
             cwd={activeTask?.path ?? null}
+            projectPath={activeProject?.path ?? null}
             collapsed={shellDrawerCollapsed}
             panelRef={shellDrawerPanelRef}
             animating={shellDrawerAnimating}
@@ -1233,6 +1235,7 @@ export function App() {
                 }
                 taskId={activeTask?.id ?? null}
                 cwd={activeTask?.path ?? null}
+                projectPath={activeProject?.path ?? null}
                 collapsed={shellDrawerCollapsed}
                 panelRef={shellDrawerPanelRef}
                 animating={shellDrawerAnimating}

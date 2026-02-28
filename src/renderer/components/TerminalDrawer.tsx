@@ -6,7 +6,8 @@ const USER_TABS_KEY = 'shellDrawerUserTabs';
 const ACTIVE_TAB_KEY = 'shellDrawerActiveTab';
 const TAB_CWDS_KEY = 'shellDrawerTabCwds';
 
-const TASK_TAB_PREFIX = 'shell-task-';
+// Sentinel value stored for "Shell 1 is active"
+const TASK_TAB_SENTINEL = 'shell-task';
 
 function loadPersistedUserTabs(): string[] {
   try {
@@ -34,6 +35,7 @@ function loadPersistedTabCwds(): Record<string, string> {
 interface TerminalDrawerProps {
   taskId: string;
   cwd: string;
+  projectPath: string;
   collapsed: boolean;
   onCollapse: () => void;
   onExpand: () => void;
@@ -42,6 +44,7 @@ interface TerminalDrawerProps {
 export function TerminalDrawer({
   taskId,
   cwd,
+  projectPath,
   collapsed,
   onCollapse,
   onExpand,
@@ -49,51 +52,40 @@ export function TerminalDrawer({
   const containerRef = useRef<HTMLDivElement>(null);
   const tabBarRef = useRef<HTMLDivElement>(null);
 
-  // Tab 0 is always the task shell (follows task selection)
-  const taskTabId = `${TASK_TAB_PREFIX}${taskId}`;
+  // Session ID for Shell 1 — always tied to current task
+  const taskSessionId = `shell-task-${taskId}`;
 
   // User-added tabs (Shell 2, 3, …)
   const [userTabs, setUserTabs] = useState<string[]>(() => loadPersistedUserTabs());
   const [tabCwds, setTabCwds] = useState<Record<string, string>>(() => loadPersistedTabCwds());
   const [homeDir, setHomeDir] = useState<string>('');
 
-  // All displayed tabs: task tab first, then user tabs
-  const allTabs = [taskTabId, ...userTabs];
-
-  // Active tab — default to task tab
+  // Active tab: TASK_TAB_SENTINEL means Shell 1, otherwise a user tab ID
   const [activeTab, setActiveTab] = useState<string>(() => {
     const stored = localStorage.getItem(ACTIVE_TAB_KEY);
     const userTabs = loadPersistedUserTabs();
-    const taskTab = `${TASK_TAB_PREFIX}${taskId}`;
-    if (stored && (stored === taskTab || userTabs.includes(stored))) return stored;
-    return taskTab;
+    if (stored === TASK_TAB_SENTINEL || stored == null) return TASK_TAB_SENTINEL;
+    if (userTabs.includes(stored)) return stored;
+    return TASK_TAB_SENTINEL;
   });
 
-  // When task changes, if active was the old task tab, follow to new task tab
-  const prevTaskIdRef = useRef<string>(taskId);
-  useEffect(() => {
-    const prevTaskTab = `${TASK_TAB_PREFIX}${prevTaskIdRef.current}`;
-    prevTaskIdRef.current = taskId;
-    if (activeTab === prevTaskTab) {
-      setActiveTab(taskTabId);
-      localStorage.setItem(ACTIVE_TAB_KEY, taskTabId);
-    }
-  }, [taskId]);
+  // The actual session ID to attach: Shell 1 always resolves to current taskSessionId
+  const effectiveSessionId = activeTab === TASK_TAB_SENTINEL ? taskSessionId : activeTab;
 
-  // Fetch home directory once on mount
   useEffect(() => {
     window.electronAPI.getHomeDir().then((dir) => setHomeDir(dir));
   }, []);
 
-  // Attach the active tab's session to the shared container
+  // Attach session whenever the effective session ID changes
+  // (task switch or user tab switch both trigger this)
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    // Task tab always uses the task's cwd; user tabs use their stored cwd
-    const sessionCwd = activeTab === taskTabId ? cwd : tabCwds[activeTab] || homeDir || cwd;
+    const sessionCwd =
+      activeTab === TASK_TAB_SENTINEL ? cwd : tabCwds[activeTab] || projectPath || homeDir || cwd;
     const session = sessionRegistry.getOrCreate({
-      id: activeTab,
+      id: effectiveSessionId,
       cwd: sessionCwd,
       shellOnly: true,
     });
@@ -104,41 +96,23 @@ export function TerminalDrawer({
     }
 
     return () => {
-      sessionRegistry.detach(activeTab);
+      sessionRegistry.detach(effectiveSessionId);
     };
-  }, [activeTab, taskTabId]);
-
-  // When task tab is active and cwd changes (task switches), re-attach with new session
-  useEffect(() => {
-    if (activeTab !== taskTabId) return;
-    const container = containerRef.current;
-    if (!container) return;
-
-    const session = sessionRegistry.getOrCreate({ id: taskTabId, cwd, shellOnly: true });
-    session.attach(container);
-    if (!collapsed) {
-      requestAnimationFrame(() => session.focus());
-    }
-    return () => {
-      sessionRegistry.detach(taskTabId);
-    };
-  }, [taskTabId]);
+  }, [effectiveSessionId]);
 
   // Focus when expanding
   useEffect(() => {
     if (!collapsed) {
-      requestAnimationFrame(() => sessionRegistry.get(activeTab)?.focus());
+      requestAnimationFrame(() => sessionRegistry.get(effectiveSessionId)?.focus());
     }
-  }, [collapsed, activeTab]);
+  }, [collapsed, effectiveSessionId]);
 
-  // Scroll active tab into view when it changes
+  // Scroll active tab indicator into view
   useEffect(() => {
     const bar = tabBarRef.current;
     if (!bar) return;
-    const activeEl = bar.querySelector('[data-active="true"]') as HTMLElement | null;
-    if (activeEl) {
-      activeEl.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    }
+    const el = bar.querySelector('[data-active="true"]') as HTMLElement | null;
+    if (el) el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }, [activeTab]);
 
   function saveUserTabs(tabs: string[]) {
@@ -151,7 +125,7 @@ export function TerminalDrawer({
 
   function addTab() {
     const id = `shell-global-${Date.now()}`;
-    const newTabCwd = homeDir || cwd;
+    const newTabCwd = projectPath || homeDir || cwd;
     const newUserTabs = [...userTabs, id];
     const newTabCwds = { ...tabCwds, [id]: newTabCwd };
     setUserTabs(newUserTabs);
@@ -163,13 +137,18 @@ export function TerminalDrawer({
   }
 
   function removeTab(id: string) {
-    if (id === taskTabId) return; // can't remove the task tab
-    const idx = allTabs.indexOf(id);
+    const idx = userTabs.indexOf(id);
     const newUserTabs = userTabs.filter((t) => t !== id);
     const newTabCwds = { ...tabCwds };
     delete newTabCwds[id];
     sessionRegistry.dispose(id);
-    const newActive = id === activeTab ? allTabs[Math.max(0, idx - 1)] : activeTab;
+    // If removing active tab, fall back to adjacent user tab or Shell 1
+    const newActive =
+      id === activeTab
+        ? idx > 0
+          ? userTabs[idx - 1]
+          : (newUserTabs[0] ?? TASK_TAB_SENTINEL)
+        : activeTab;
     setUserTabs(newUserTabs);
     setTabCwds(newTabCwds);
     setActiveTab(newActive);
@@ -187,22 +166,25 @@ export function TerminalDrawer({
     [activeTab],
   );
 
+  // All displayed tabs: Shell 1 (sentinel) + user tabs
+  const allDisplayTabs = [TASK_TAB_SENTINEL, ...userTabs];
+
   return (
     <div className="h-full flex flex-col">
-      {/* Tab bar — shown whether collapsed or expanded */}
+      {/* Tab bar */}
       <div
         className="flex items-center h-8 flex-shrink-0 border-b border-border/40"
         style={{ background: 'hsl(var(--surface-1))' }}
       >
-        {/* Scrollable tabs list */}
+        {/* Scrollable tab list */}
         <div
           ref={tabBarRef}
           className="flex items-center flex-1 min-w-0 h-full overflow-x-auto"
           style={{ scrollbarWidth: 'none' }}
         >
-          {allTabs.map((tabId, i) => {
+          {allDisplayTabs.map((tabId, i) => {
+            const isTaskTab = tabId === TASK_TAB_SENTINEL;
             const active = tabId === activeTab && !collapsed;
-            const isTaskTab = tabId === taskTabId;
             return (
               <div
                 key={tabId}
@@ -239,7 +221,7 @@ export function TerminalDrawer({
           })}
         </div>
 
-        {/* Add tab button — outside scroll area so always visible */}
+        {/* Add tab — always visible outside scroll area */}
         <button
           onClick={addTab}
           className="flex-shrink-0 flex items-center justify-center w-7 h-full text-muted-foreground/40 hover:text-foreground hover:bg-accent/10 transition-colors border-l border-border/30"
@@ -248,7 +230,7 @@ export function TerminalDrawer({
           <Plus size={12} strokeWidth={2} />
         </button>
 
-        {/* Collapse / expand toggle */}
+        {/* Collapse / expand */}
         <button
           onClick={collapsed ? onExpand : onCollapse}
           className="flex-shrink-0 flex items-center justify-center w-7 h-full text-muted-foreground/40 hover:text-foreground hover:bg-accent/10 transition-colors border-l border-border/30"
@@ -262,7 +244,7 @@ export function TerminalDrawer({
         </button>
       </div>
 
-      {/* Single shared container — active session is moved here on tab switch */}
+      {/* Shared terminal container */}
       <div
         ref={containerRef}
         className="terminal-container flex-1 min-h-0"
