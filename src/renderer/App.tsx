@@ -147,6 +147,7 @@ export function App() {
   const [shellDrawerAnimating, setShellDrawerAnimating] = useState(false);
   const fileWatcherCleanup = useRef<(() => void) | null>(null);
   const gitPollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const activeTaskIdRef = useRef<string | null>(activeTaskId);
   const activeProject = projects.find((p) => p.id === activeProjectId) ?? null;
 
   // Find activeTask across all projects
@@ -157,6 +158,9 @@ export function App() {
     }
     return null;
   })();
+
+  // Keep ref in sync so async callbacks can check the current active task
+  activeTaskIdRef.current = activeTaskId;
 
   // All non-archived tasks for the active project (for cycling)
   const activeProjectTasks = activeProjectId
@@ -335,22 +339,23 @@ export function App() {
     }
 
     const taskCwd = activeTask.path;
-    refreshGitStatus(taskCwd);
+    const taskId = activeTask.id;
+    refreshGitStatus(taskCwd, taskId);
 
-    window.electronAPI.gitWatch({ id: activeTask.id, cwd: taskCwd });
+    window.electronAPI.gitWatch({ id: taskId, cwd: taskCwd });
     const unsubscribe = window.electronAPI.onGitFileChanged((id) => {
-      if (id === activeTask.id) {
-        refreshGitStatus(taskCwd);
+      if (id === taskId) {
+        refreshGitStatus(taskCwd, taskId);
       }
     });
 
     gitPollTimer.current = setInterval(() => {
-      refreshGitStatus(taskCwd);
+      refreshGitStatus(taskCwd, taskId);
     }, GIT_POLL_INTERVAL);
 
     fileWatcherCleanup.current = () => {
       unsubscribe();
-      window.electronAPI.gitUnwatch(activeTask.id);
+      window.electronAPI.gitUnwatch(taskId);
       if (gitPollTimer.current) {
         clearInterval(gitPollTimer.current);
         gitPollTimer.current = null;
@@ -566,12 +571,15 @@ export function App() {
     });
   }
 
-  async function refreshGitStatus(cwd: string) {
+  async function refreshGitStatus(cwd: string, taskId?: string) {
     setGitLoading(true);
     try {
       const resp = await window.electronAPI.gitGetStatus(cwd);
       if (resp.success && resp.data) {
-        setGitStatus(resp.data);
+        // Guard against stale responses from a previously active task
+        if (taskId === undefined || activeTaskIdRef.current === taskId) {
+          setGitStatus(resp.data);
+        }
       }
     } catch {
       // Ignore
@@ -839,46 +847,53 @@ export function App() {
 
   async function handleStageFile(filePath: string) {
     if (!activeTask) return;
-    await window.electronAPI.gitStageFile({ cwd: activeTask.path, filePath });
-    refreshGitStatus(activeTask.path);
+    const { id: taskId, path: taskPath } = activeTask;
+    await window.electronAPI.gitStageFile({ cwd: taskPath, filePath });
+    refreshGitStatus(taskPath, taskId);
   }
 
   async function handleUnstageFile(filePath: string) {
     if (!activeTask) return;
-    await window.electronAPI.gitUnstageFile({ cwd: activeTask.path, filePath });
-    refreshGitStatus(activeTask.path);
+    const { id: taskId, path: taskPath } = activeTask;
+    await window.electronAPI.gitUnstageFile({ cwd: taskPath, filePath });
+    refreshGitStatus(taskPath, taskId);
   }
 
   async function handleStageAll() {
     if (!activeTask) return;
-    await window.electronAPI.gitStageAll(activeTask.path);
-    refreshGitStatus(activeTask.path);
+    const { id: taskId, path: taskPath } = activeTask;
+    await window.electronAPI.gitStageAll(taskPath);
+    refreshGitStatus(taskPath, taskId);
   }
 
   async function handleUnstageAll() {
     if (!activeTask) return;
-    await window.electronAPI.gitUnstageAll(activeTask.path);
-    refreshGitStatus(activeTask.path);
+    const { id: taskId, path: taskPath } = activeTask;
+    await window.electronAPI.gitUnstageAll(taskPath);
+    refreshGitStatus(taskPath, taskId);
   }
 
   async function handleCommit(message: string) {
     if (!activeTask) return;
-    const res = await window.electronAPI.gitCommit({ cwd: activeTask.path, message });
+    const { id: taskId, path: taskPath } = activeTask;
+    const res = await window.electronAPI.gitCommit({ cwd: taskPath, message });
     if (!res.success) throw new Error(res.error || 'Commit failed');
-    refreshGitStatus(activeTask.path);
+    refreshGitStatus(taskPath, taskId);
   }
 
   async function handlePush() {
     if (!activeTask) return;
-    const res = await window.electronAPI.gitPush(activeTask.path);
+    const { id: taskId, path: taskPath } = activeTask;
+    const res = await window.electronAPI.gitPush(taskPath);
     if (!res.success) throw new Error(res.error || 'Push failed');
-    refreshGitStatus(activeTask.path);
+    refreshGitStatus(taskPath, taskId);
   }
 
   async function handleDiscardFile(filePath: string) {
     if (!activeTask) return;
-    await window.electronAPI.gitDiscardFile({ cwd: activeTask.path, filePath });
-    refreshGitStatus(activeTask.path);
+    const { id: taskId, path: taskPath } = activeTask;
+    await window.electronAPI.gitDiscardFile({ cwd: taskPath, filePath });
+    refreshGitStatus(taskPath, taskId);
   }
 
   async function handleViewDiff(filePath: string, staged: boolean) {
