@@ -1,6 +1,6 @@
 import React from 'react';
 import { TerminalPane } from './TerminalPane';
-import { Terminal, FolderOpen, GitBranch, Globe } from 'lucide-react';
+import { Terminal, FolderOpen, GitBranch, Globe, Plus, X } from 'lucide-react';
 import type { Project, Task, RemoteControlState } from '../../shared/types';
 
 /** Convert a git remote URL (SSH or HTTPS) to a GitHub issues base URL */
@@ -15,6 +15,43 @@ function issueUrl(remote: string | null, num: number): string | null {
   return null;
 }
 
+function TabButton({
+  label,
+  active,
+  onClick,
+  onClose,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  onClose?: () => void;
+}) {
+  return (
+    <div
+      className={`group flex-shrink-0 flex items-center gap-1.5 px-3 h-full cursor-pointer border-r border-border/20 transition-colors duration-100 ${
+        active
+          ? 'bg-background/60 text-foreground'
+          : 'text-muted-foreground hover:text-foreground hover:bg-accent/30'
+      }`}
+      onClick={onClick}
+    >
+      <span className="text-[11px] font-medium select-none">{label}</span>
+      {onClose && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onClose();
+          }}
+          className="opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity duration-100 rounded p-px hover:bg-accent text-muted-foreground hover:text-foreground"
+          title="Close tab"
+        >
+          <X size={10} strokeWidth={2} />
+        </button>
+      )}
+    </div>
+  );
+}
+
 interface MainContentProps {
   activeTask: Task | null;
   activeProject: Project | null;
@@ -25,6 +62,11 @@ interface MainContentProps {
   remoteControlStates?: Record<string, RemoteControlState>;
   onSelectTask?: (id: string) => void;
   onEnableRemoteControl?: (taskId: string) => void;
+  extraTabs?: string[];
+  activeTabId?: string | null;
+  onAddTab?: () => void;
+  onRemoveTab?: (tabId: string) => void;
+  onSelectTab?: (tabId: string) => void;
 }
 
 export function MainContent({
@@ -37,6 +79,11 @@ export function MainContent({
   remoteControlStates = {},
   onSelectTask,
   onEnableRemoteControl,
+  extraTabs = [],
+  activeTabId,
+  onAddTab,
+  onRemoveTab,
+  onSelectTab,
 }: MainContentProps) {
   if (!activeProject) {
     return (
@@ -180,16 +227,60 @@ export function MainContent({
     </div>
   );
 
+  const effectiveTabId = activeTabId ?? activeTask.id;
+
   return (
     <div className="h-full flex flex-col bg-background">
       {taskHeader}
       <div className="flex-1 min-h-0">
-        <TerminalPane
-          key={activeTask.id}
-          id={activeTask.id}
-          cwd={activeTask.path}
-          autoApprove={activeTask.autoApprove}
+        {effectiveTabId === activeTask.id ? (
+          <TerminalPane
+            key={activeTask.id}
+            id={activeTask.id}
+            cwd={activeTask.path}
+            autoApprove={activeTask.autoApprove}
+          />
+        ) : (
+          <TerminalPane
+            key={effectiveTabId}
+            id={effectiveTabId}
+            cwd={activeTask.path}
+            shellOnly
+          />
+        )}
+      </div>
+
+      {/* Tab bar at bottom */}
+      <div
+        className="flex items-center h-7 flex-shrink-0 border-t border-border/30 overflow-x-auto scrollbar-none"
+        style={{ background: 'hsl(var(--surface-1))' }}
+      >
+        {/* Add tab button — leftmost */}
+        <button
+          onClick={onAddTab}
+          title="New terminal"
+          className="flex-shrink-0 px-2.5 h-full flex items-center text-muted-foreground/40 hover:text-foreground hover:bg-accent/40 transition-colors duration-100 border-r border-border/20"
+        >
+          <Plus size={12} strokeWidth={2} />
+        </button>
+
+        {/* Claude tab (permanent) */}
+        <TabButton
+          label="Claude"
+          active={effectiveTabId === activeTask.id}
+          onClick={() => onSelectTab?.(activeTask.id)}
         />
+
+        {/* Shell tabs */}
+        {extraTabs.map((tabId, i) => (
+          <TabButton
+            key={tabId}
+            label={extraTabs.length === 1 ? 'Shell' : `Shell ${i + 1}`}
+            active={effectiveTabId === tabId}
+            onClose={() => onRemoveTab?.(tabId)}
+            onClick={() => onSelectTab?.(tabId)}
+          />
+        ))}
       </div>
     </div>
   );

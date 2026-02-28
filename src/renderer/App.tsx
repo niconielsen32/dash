@@ -129,6 +129,21 @@ export function App() {
     return (localStorage.getItem('viewMode') as 'single' | 'grid') || 'single';
   });
 
+  const [extraTabsByTask, setExtraTabsByTask] = useState<Record<string, string[]>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('extraTabsByTask') || '{}');
+    } catch {
+      return {};
+    }
+  });
+  const [activeTabByTask, setActiveTabByTask] = useState<Record<string, string>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('activeTabByTask') || '{}');
+    } catch {
+      return {};
+    }
+  });
+
   const sidebarPanelRef = useRef<ImperativePanelHandle>(null);
   const changesPanelRef = useRef<ImperativePanelHandle>(null);
   const shellDrawerPanelRef = useRef<ImperativePanelHandle>(null);
@@ -622,6 +637,43 @@ export function App() {
     setActiveTaskId(taskId);
   }
 
+  const handleAddTab = useCallback((taskId: string) => {
+    const tabId = `shell:${taskId}:${Date.now()}`;
+    setExtraTabsByTask((prev) => {
+      const next = { ...prev, [taskId]: [...(prev[taskId] || []), tabId] };
+      localStorage.setItem('extraTabsByTask', JSON.stringify(next));
+      return next;
+    });
+    setActiveTabByTask((prev) => {
+      const next = { ...prev, [taskId]: tabId };
+      localStorage.setItem('activeTabByTask', JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const handleRemoveTab = useCallback(async (taskId: string, tabId: string) => {
+    await sessionRegistry.dispose(tabId);
+    setExtraTabsByTask((prev) => {
+      const next = { ...prev, [taskId]: (prev[taskId] || []).filter((id) => id !== tabId) };
+      localStorage.setItem('extraTabsByTask', JSON.stringify(next));
+      return next;
+    });
+    setActiveTabByTask((prev) => {
+      if (prev[taskId] !== tabId) return prev;
+      const next = { ...prev, [taskId]: taskId };
+      localStorage.setItem('activeTabByTask', JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const handleSelectTab = useCallback((taskId: string, tabId: string) => {
+    setActiveTabByTask((prev) => {
+      const next = { ...prev, [taskId]: tabId };
+      localStorage.setItem('activeTabByTask', JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
   function handleNewTask(projectId: string) {
     setActiveProjectId(projectId);
     setTaskModalProjectId(projectId);
@@ -768,6 +820,24 @@ export function App() {
 
     // Clean up shell terminal session
     sessionRegistry.dispose(`shell:${task.id}`);
+
+    // Dispose extra shell tabs
+    const tabIds = extraTabsByTask[task.id] || [];
+    for (const tabId of tabIds) {
+      await sessionRegistry.dispose(tabId);
+    }
+    setExtraTabsByTask((prev) => {
+      const next = { ...prev };
+      delete next[task.id];
+      localStorage.setItem('extraTabsByTask', JSON.stringify(next));
+      return next;
+    });
+    setActiveTabByTask((prev) => {
+      const next = { ...prev };
+      delete next[task.id];
+      localStorage.setItem('activeTabByTask', JSON.stringify(next));
+      return next;
+    });
 
     await window.electronAPI.deleteTask(task.id);
     if (activeTaskId === task.id) {
@@ -1023,6 +1093,11 @@ export function App() {
                 remoteControlStates={remoteControlStates}
                 onSelectTask={setActiveTaskId}
                 onEnableRemoteControl={(taskId) => setRemoteControlModalPtyId(taskId)}
+                extraTabs={activeTask ? (extraTabsByTask[activeTask.id] || []) : []}
+                activeTabId={activeTask ? (activeTabByTask[activeTask.id] || activeTask.id) : null}
+                onAddTab={() => activeTask && handleAddTab(activeTask.id)}
+                onRemoveTab={(tabId) => activeTask && handleRemoveTab(activeTask.id, tabId)}
+                onSelectTab={(tabId) => activeTask && handleSelectTab(activeTask.id, tabId)}
               />
             )}
           </ShellDrawerWrapper>

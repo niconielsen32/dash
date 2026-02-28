@@ -9,9 +9,10 @@ interface TerminalPaneProps {
   id: string;
   cwd: string;
   autoApprove?: boolean;
+  shellOnly?: boolean;
 }
 
-export function TerminalPane({ id, cwd, autoApprove }: TerminalPaneProps) {
+export function TerminalPane({ id, cwd, autoApprove, shellOnly }: TerminalPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [showOverlay, setShowOverlay] = useState(false);
@@ -33,7 +34,7 @@ export function TerminalPane({ id, cwd, autoApprove }: TerminalPaneProps) {
 
     // Get or create session first so we can register callbacks
     // before the async attach() work detects a restart
-    const session = sessionRegistry.getOrCreate({ id, cwd, autoApprove });
+    const session = sessionRegistry.getOrCreate({ id, cwd, autoApprove, shellOnly });
 
     session.onRestarting(() => {
       overlayStartRef.current = Date.now();
@@ -55,7 +56,7 @@ export function TerminalPane({ id, cwd, autoApprove }: TerminalPaneProps) {
     return () => {
       sessionRegistry.detach(id);
     };
-  }, [id, cwd, autoApprove, hideOverlay]);
+  }, [id, cwd, autoApprove, shellOnly, hideOverlay]);
 
   return (
     <div
