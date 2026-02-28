@@ -18,31 +18,48 @@ function issueUrl(remote: string | null, num: number): string | null {
 function TabButton({
   label,
   active,
+  activity,
   onClick,
   onClose,
 }: {
   label: string;
   active: boolean;
+  activity?: 'busy' | 'idle' | 'waiting';
   onClick: () => void;
   onClose?: () => void;
 }) {
   return (
     <div
-      className={`group flex-shrink-0 flex items-center gap-1.5 px-3 h-full cursor-pointer border-r border-border/20 transition-colors duration-100 ${
+      role="tab"
+      aria-selected={active}
+      className={`group relative flex-shrink-0 flex items-center gap-1.5 px-3 h-full cursor-pointer border-r border-border/20 transition-colors duration-100 select-none ${
         active
-          ? 'bg-background/60 text-foreground'
-          : 'text-muted-foreground hover:text-foreground hover:bg-accent/30'
+          ? 'text-foreground bg-background/50'
+          : 'text-muted-foreground/70 hover:text-foreground hover:bg-accent/30'
       }`}
       onClick={onClick}
     >
-      <span className="text-[11px] font-medium select-none">{label}</span>
+      {/* Active indicator — bottom border */}
+      {active && <span className="absolute inset-x-0 bottom-0 h-[2px] bg-primary rounded-t-full" />}
+      {activity && (
+        <span
+          className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+            activity === 'waiting'
+              ? 'bg-orange-500'
+              : activity === 'busy'
+                ? 'bg-amber-400 status-pulse'
+                : 'bg-emerald-400'
+          }`}
+        />
+      )}
+      <span className="text-[11px] font-medium">{label}</span>
       {onClose && (
         <button
           onClick={(e) => {
             e.stopPropagation();
             onClose();
           }}
-          className="opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity duration-100 rounded p-px hover:bg-accent text-muted-foreground hover:text-foreground"
+          className="opacity-0 group-hover:opacity-50 hover:!opacity-100 transition-opacity duration-100 rounded p-px hover:bg-accent text-muted-foreground hover:text-foreground ml-0.5"
           title="Close tab"
         >
           <X size={10} strokeWidth={2} />
@@ -265,12 +282,7 @@ export function MainContent({
             autoApprove={activeTask.autoApprove}
           />
         ) : (
-          <TerminalPane
-            key={effectiveTabId}
-            id={effectiveTabId}
-            cwd={activeTask.path}
-            shellOnly
-          />
+          <TerminalPane key={effectiveTabId} id={effectiveTabId} cwd={activeTask.path} shellOnly />
         )}
       </div>
 
@@ -292,6 +304,7 @@ export function MainContent({
         <TabButton
           label="Claude"
           active={effectiveTabId === activeTask.id}
+          activity={taskActivity[activeTask.id]}
           onClick={() => onSelectTab?.(activeTask.id)}
         />
 
@@ -301,6 +314,7 @@ export function MainContent({
             key={tabId}
             label={extraTabs.length === 1 ? 'Shell' : `Shell ${i + 1}`}
             active={effectiveTabId === tabId}
+            activity={taskActivity[tabId]}
             onClose={() => onRemoveTab?.(tabId)}
             onClick={() => onSelectTab?.(tabId)}
           />
