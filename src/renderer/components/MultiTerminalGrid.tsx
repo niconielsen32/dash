@@ -1,4 +1,5 @@
 import React from 'react';
+import { X } from 'lucide-react';
 import { TerminalPane } from './TerminalPane';
 import type { Task, Project } from '@shared/types';
 
@@ -6,6 +7,7 @@ interface MultiTerminalGridProps {
   tasks: Task[];
   projects: Project[];
   taskActivity: Record<string, 'busy' | 'idle' | 'waiting'>;
+  onRemoveTask?: (taskId: string) => void;
 }
 
 function gridColsClass(count: number): string {
@@ -26,7 +28,12 @@ function ActivityDot({ status }: { status: 'busy' | 'idle' | 'waiting' | undefin
   return <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${cls}`} />;
 }
 
-export function MultiTerminalGrid({ tasks, projects, taskActivity }: MultiTerminalGridProps) {
+export function MultiTerminalGrid({
+  tasks,
+  projects,
+  taskActivity,
+  onRemoveTask,
+}: MultiTerminalGridProps) {
   if (tasks.length === 0) {
     return (
       <div className="h-full flex items-center justify-center">
@@ -57,6 +64,15 @@ export function MultiTerminalGrid({ tasks, projects, taskActivity }: MultiTermin
                 <span className="text-[10px] text-muted-foreground/50 flex-shrink-0 truncate max-w-[80px]">
                   {project.name}
                 </span>
+              )}
+              {onRemoveTask && (
+                <button
+                  onClick={() => onRemoveTask(task.id)}
+                  className="flex-shrink-0 ml-1 p-px rounded hover:bg-accent text-muted-foreground/40 hover:text-foreground transition-colors"
+                  title="Remove from grid"
+                >
+                  <X size={11} strokeWidth={2} />
+                </button>
               )}
             </div>
             <div className="flex-1 min-h-0">

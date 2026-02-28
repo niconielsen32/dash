@@ -92,13 +92,13 @@ export function App() {
   });
   // Sync desktop notification settings to main process
   useEffect(() => {
-    window.electronAPI.setDesktopNotification?.({
+    window.electronAPI?.setDesktopNotification?.({
       enabled: desktopNotification,
     });
   }, [desktopNotification]);
   // Sync commit attribution to main process
   useEffect(() => {
-    window.electronAPI.setCommitAttribution?.(commitAttribution);
+    window.electronAPI?.setCommitAttribution?.(commitAttribution);
   }, [commitAttribution]);
 
   // Skills state
@@ -185,13 +185,13 @@ export function App() {
   // All tasks with active PTY sessions (for grid view)
   const allTasksWithActivity = Object.values(tasksByProject)
     .flat()
-    .filter((t) => !t.archivedAt && taskActivity[t.id] !== undefined);
+    .filter((t) => !t.archivedAt && (taskActivity[t.id] !== undefined || t.id === activeTaskId));
 
   // Load projects on mount
   useEffect(() => {
     loadProjects();
     // Check agr availability once on mount
-    window.electronAPI.skillsAgrCheck().then((resp) => {
+    window.electronAPI?.skillsAgrCheck()?.then((resp) => {
       if (resp.success) setAgrAvailable(resp.data ?? false);
     });
   }, []);
@@ -203,14 +203,14 @@ export function App() {
 
   // Save all terminal snapshots when app is about to quit
   useEffect(() => {
-    return window.electronAPI.onBeforeQuit(() => {
+    return window.electronAPI?.onBeforeQuit(() => {
       sessionRegistry.saveAllSnapshots();
     });
   }, []);
 
   // Focus a specific task when notification is clicked
   useEffect(() => {
-    return window.electronAPI.onFocusTask((taskId) => {
+    return window.electronAPI?.onFocusTask((taskId) => {
       setActiveTaskId(taskId);
     });
   }, []);
@@ -222,7 +222,7 @@ export function App() {
     // busy→idle transition that fires when a direct-spawn PTY first registers.
     const hasBeenIdle = new Set<string>();
 
-    const unsubscribe = window.electronAPI.onPtyActivity((newActivity) => {
+    const unsubscribe = window.electronAPI?.onPtyActivity((newActivity) => {
       // Peon mode: detect idle→busy transitions (user submits query)
       if (notificationSoundRef.current === 'peon') {
         for (const [id, state] of Object.entries(newActivity)) {
@@ -255,7 +255,7 @@ export function App() {
       setTaskActivity(newActivity);
     });
 
-    window.electronAPI.ptyGetAllActivity().then((resp) => {
+    window.electronAPI?.ptyGetAllActivity()?.then((resp) => {
       if (resp.success && resp.data) {
         Object.assign(prevActivity, resp.data);
         for (const [id, state] of Object.entries(resp.data)) {
@@ -270,7 +270,7 @@ export function App() {
 
   // Remote control — subscribe to state changes
   useEffect(() => {
-    const unsubscribe = window.electronAPI.onRemoteControlStateChanged(({ ptyId, state }) => {
+    const unsubscribe = window.electronAPI?.onRemoteControlStateChanged(({ ptyId, state }) => {
       setRemoteControlStates((prev) => {
         if (!state) {
           const next = { ...prev };
@@ -281,7 +281,7 @@ export function App() {
       });
     });
 
-    window.electronAPI.ptyRemoteControlGetAllStates().then((resp) => {
+    window.electronAPI?.ptyRemoteControlGetAllStates()?.then((resp) => {
       if (resp.success && resp.data) {
         setRemoteControlStates(resp.data);
       }
@@ -1139,6 +1139,15 @@ export function App() {
                 tasks={allTasksWithActivity}
                 projects={projects}
                 taskActivity={taskActivity}
+                onRemoveTask={(taskId) => {
+                  sessionRegistry.dispose(taskId);
+                  window.electronAPI.ptyKill(taskId);
+                  setTaskActivity((prev) => {
+                    const next = { ...prev };
+                    delete next[taskId];
+                    return next;
+                  });
+                }}
               />
             ) : (
               <MainContent
@@ -1152,8 +1161,8 @@ export function App() {
                 skills={skills}
                 onSelectTask={setActiveTaskId}
                 onEnableRemoteControl={(taskId) => setRemoteControlModalPtyId(taskId)}
-                extraTabs={activeTask ? (extraTabsByTask[activeTask.id] || []) : []}
-                activeTabId={activeTask ? (activeTabByTask[activeTask.id] || activeTask.id) : null}
+                extraTabs={activeTask ? extraTabsByTask[activeTask.id] || [] : []}
+                activeTabId={activeTask ? activeTabByTask[activeTask.id] || activeTask.id : null}
                 onAddTab={() => activeTask && handleAddTab(activeTask.id)}
                 onRemoveTab={(tabId) => activeTask && handleRemoveTab(activeTask.id, tabId)}
                 onSelectTab={(tabId) => activeTask && handleSelectTab(activeTask.id, tabId)}
