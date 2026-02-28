@@ -32,7 +32,7 @@ import type {
 import { loadKeybindings, saveKeybindings, matchesBinding } from './keybindings';
 import type { KeyBindingMap } from './keybindings';
 import { sessionRegistry } from './terminal/SessionRegistry';
-import { LayoutTemplate, LayoutGrid } from 'lucide-react';
+import { LayoutTemplate, LayoutGrid, Folders } from 'lucide-react';
 import { MultiTerminalGrid } from './components/MultiTerminalGrid';
 import { playNotificationSound, playPeonSound } from './sounds';
 import type { NotificationSound } from './sounds';
@@ -137,6 +137,9 @@ export function App() {
   });
   const [viewMode, setViewMode] = useState<'single' | 'grid'>(() => {
     return (localStorage.getItem('viewMode') as 'single' | 'grid') || 'single';
+  });
+  const [gridGroupByProject, setGridGroupByProject] = useState(() => {
+    return localStorage.getItem('gridGroupByProject') !== 'false';
   });
 
   const [extraTabsByTask, setExtraTabsByTask] = useState<Record<string, string[]>>(() => {
@@ -388,6 +391,12 @@ export function App() {
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      // New window
+      if (e.metaKey && e.shiftKey && e.key === 'N') {
+        e.preventDefault();
+        window.electronAPI.newWindow();
+        return;
+      }
       // Tasks
       if (keybindings.newTask && matchesBinding(e, keybindings.newTask)) {
         e.preventDefault();
@@ -1032,6 +1041,23 @@ export function App() {
               <Icon size={14} strokeWidth={1.8} />
             </button>
           ))}
+          {viewMode === 'grid' && (
+            <button
+              onClick={() => {
+                const next = !gridGroupByProject;
+                setGridGroupByProject(next);
+                localStorage.setItem('gridGroupByProject', String(next));
+              }}
+              title={gridGroupByProject ? 'Flat grid' : 'Group by project'}
+              className={`p-1.5 rounded-md transition-colors duration-150 ml-0.5 ${
+                gridGroupByProject
+                  ? 'bg-primary/10 text-primary'
+                  : 'text-muted-foreground/40 hover:text-foreground hover:bg-accent/60'
+              }`}
+            >
+              <Folders size={14} strokeWidth={1.8} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -1139,6 +1165,7 @@ export function App() {
                 tasks={allTasksWithActivity}
                 projects={projects}
                 taskActivity={taskActivity}
+                groupByProject={gridGroupByProject}
                 onRemoveTask={(taskId) => {
                   sessionRegistry.dispose(taskId);
                   window.electronAPI.ptyKill(taskId);
