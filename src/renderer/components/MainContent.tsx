@@ -1,5 +1,6 @@
 import React from 'react';
 import { TerminalPane } from './TerminalPane';
+import { BrowserPane } from './BrowserPane';
 import { Terminal, FolderOpen, GitBranch, Globe, Sparkles, Plus, X } from 'lucide-react';
 import type { Project, Task, RemoteControlState, Skill } from '../../shared/types';
 
@@ -85,6 +86,7 @@ interface MainContentProps {
   onAddTab?: () => void;
   onRemoveTab?: (tabId: string) => void;
   onSelectTab?: (tabId: string) => void;
+  showBrowser?: boolean;
 }
 
 export function MainContent({
@@ -103,6 +105,7 @@ export function MainContent({
   onAddTab,
   onRemoveTab,
   onSelectTab,
+  showBrowser = false,
 }: MainContentProps) {
   if (!activeProject) {
     return (
@@ -269,12 +272,15 @@ export function MainContent({
   );
 
   const effectiveTabId = activeTabId ?? activeTask.id;
+  const browserId = `browser:single:${activeTask.id}`;
 
   return (
     <div className="h-full flex flex-col bg-background">
       {taskHeader}
       <div className="flex-1 min-h-0">
-        {effectiveTabId === activeTask.id ? (
+        {showBrowser ? (
+          <BrowserPane key={browserId} id={browserId} fill />
+        ) : effectiveTabId === activeTask.id || effectiveTabId.startsWith('browser:') ? (
           <TerminalPane
             key={activeTask.id}
             id={activeTask.id}
@@ -310,16 +316,19 @@ export function MainContent({
         />
 
         {/* Shell tabs */}
-        {extraTabs.map((tabId, i) => (
-          <TabButton
-            key={tabId}
-            label={extraTabs.length === 1 ? 'Shell' : `Shell ${i + 1}`}
-            active={effectiveTabId === tabId}
-            activity={taskActivity[tabId]}
-            onClose={() => onRemoveTab?.(tabId)}
-            onClick={() => onSelectTab?.(tabId)}
-          />
-        ))}
+        {(() => {
+          const shellTabs = extraTabs.filter((t) => t.startsWith('shell:'));
+          return shellTabs.map((tabId, i) => (
+            <TabButton
+              key={tabId}
+              label={shellTabs.length === 1 ? 'Shell' : `Shell ${i + 1}`}
+              active={effectiveTabId === tabId}
+              activity={taskActivity[tabId]}
+              onClose={() => onRemoveTab?.(tabId)}
+              onClick={() => onSelectTab?.(tabId)}
+            />
+          ));
+        })()}
       </div>
     </div>
   );

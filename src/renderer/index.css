@@ -159,7 +159,8 @@
   transition: background-color 200ms ease;
 }
 [data-panel-group-direction='vertical'] > [data-panel-resize-handle-id]:hover::after,
-[data-panel-group-direction='vertical'] > [data-panel-resize-handle-id][data-resize-handle-active]::after {
+[data-panel-group-direction='vertical']
+  > [data-panel-resize-handle-id][data-resize-handle-active]::after {
   background: hsl(var(--primary) / 0.5);
 }
 
@@ -179,7 +180,8 @@
   transition: background-color 200ms ease;
 }
 [data-panel-group-direction='horizontal'] > [data-panel-resize-handle-id]:hover::after,
-[data-panel-group-direction='horizontal'] > [data-panel-resize-handle-id][data-resize-handle-active]::after {
+[data-panel-group-direction='horizontal']
+  > [data-panel-resize-handle-id][data-resize-handle-active]::after {
   background: hsl(var(--primary) / 0.5);
 }
 
@@ -324,6 +326,17 @@
   animation: bar-pulse 2s ease-in-out infinite;
 }
 
+/* ── Browser Loading Bar ─────────────────────────────────── */
+
+@keyframes slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+
 /* ── Focus Ring ───────────────────────────────────────────── */
 
 .focus-ring:focus-visible {
@@ -364,7 +377,7 @@
   background: hsl(var(--primary) / 0.12) !important;
 }
 .diff-line-commented {
-  border-left: 2px solid hsl(var(--primary) / 0.50);
+  border-left: 2px solid hsl(var(--primary) / 0.5);
 }
 .diff-gutter-clickable {
   cursor: pointer;
@@ -375,7 +388,9 @@
 
 /* ── Panel Collapse/Expand Animation ─────────────────────── */
 .panel-transition {
-  transition: flex-grow 200ms ease-out, flex-shrink 200ms ease-out;
+  transition:
+    flex-grow 200ms ease-out,
+    flex-shrink 200ms ease-out;
 }
 
 /* ── File Item Enter Animation ───────────────────────────── */

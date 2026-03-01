@@ -7,7 +7,8 @@ import {
 } from 'react-resizable-panels';
 import { LeftSidebar } from './components/LeftSidebar';
 import { MainContent } from './components/MainContent';
-import { FileChangesPanel } from './components/FileChangesPanel';
+import { FileChangesPanel, type RightPanelView } from './components/FileChangesPanel';
+import { FileEditorModal } from './components/FileEditorModal';
 import { ShellDrawerWrapper } from './components/ShellDrawerWrapper';
 import { DiffViewer } from './components/DiffViewer';
 import { CommitGraphModal } from './components/CommitGraph/CommitGraphModal';
@@ -32,21 +33,43 @@ import type {
 import { loadKeybindings, saveKeybindings, matchesBinding } from './keybindings';
 import type { KeyBindingMap } from './keybindings';
 import { sessionRegistry } from './terminal/SessionRegistry';
-import { LayoutTemplate, LayoutGrid, Folders } from 'lucide-react';
+import { LayoutTemplate, LayoutGrid, Folders, Globe } from 'lucide-react';
 import { MultiTerminalGrid } from './components/MultiTerminalGrid';
 import { playNotificationSound, playPeonSound } from './sounds';
 import type { NotificationSound } from './sounds';
 
 const GIT_POLL_INTERVAL = 5000;
 
+// Per-window project list helpers (sessionStorage)
+function getWindowProjectIds(): string[] {
+  try {
+    return JSON.parse(sessionStorage.getItem('windowProjectIds') || '[]');
+  } catch {
+    return [];
+  }
+}
+
+function addWindowProjectId(id: string): void {
+  const ids = getWindowProjectIds();
+  if (!ids.includes(id)) {
+    ids.push(id);
+    sessionStorage.setItem('windowProjectIds', JSON.stringify(ids));
+  }
+}
+
+function removeWindowProjectId(id: string): void {
+  const ids = getWindowProjectIds().filter((i) => i !== id);
+  sessionStorage.setItem('windowProjectIds', JSON.stringify(ids));
+}
+
 export function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(() =>
-    localStorage.getItem('activeProjectId'),
+    sessionStorage.getItem('activeProjectId'),
   );
   const [tasksByProject, setTasksByProject] = useState<Record<string, Task[]>>({});
   const [activeTaskId, setActiveTaskId] = useState<string | null>(() =>
-    localStorage.getItem('activeTaskId'),
+    sessionStorage.getItem('activeTaskId'),
   );
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [taskModalProjectId, setTaskModalProjectId] = useState<string | null>(null);
@@ -135,8 +158,16 @@ export function App() {
   const [changesPanelCollapsed, setChangesPanelCollapsed] = useState(() => {
     return localStorage.getItem('changesPanelCollapsed') === 'true';
   });
+  const [rightPanelView, setRightPanelView] = useState<RightPanelView>(() => {
+    return (sessionStorage.getItem('rightPanelView') as RightPanelView) || 'changes';
+  });
+  const [fileChangeVersion, setFileChangeVersion] = useState(0);
+  const [fileEditorState, setFileEditorState] = useState<{
+    relativePath: string;
+    cwd: string;
+  } | null>(null);
   const [viewMode, setViewMode] = useState<'single' | 'grid'>(() => {
-    return (localStorage.getItem('viewMode') as 'single' | 'grid') || 'single';
+    return (localStorage.getItem('viewMode') as 'single' | 'grid') || 'grid';
   });
   const [gridGroupByProject, setGridGroupByProject] = useState(() => {
     return localStorage.getItem('gridGroupByProject') !== 'false';
@@ -158,6 +189,11 @@ export function App() {
       return {};
     }
   });
+
+  const [browserTabTitles, setBrowserTabTitles] = useState<Record<string, string>>({});
+  const [gridBrowserPanes, setGridBrowserPanes] = useState<string[]>([]);
+  const [gridBrowserTitles, setGridBrowserTitles] = useState<Record<string, string>>({});
+  const [showBrowser, setShowBrowser] = useState(false);
 
   const sidebarPanelRef = useRef<ImperativePanelHandle>(null);
   const changesPanelRef = useRef<ImperativePanelHandle>(null);
@@ -197,9 +233,30 @@ export function App() {
         (taskActivity[t.id] !== undefined || t.id === activeTaskId),
     );
 
-  // Load projects on mount
+  // Load projects on mount — seed window project list on first launch
   useEffect(() => {
-    loadProjects();
+    async function init() {
+      // First window load: seed with all existing projects from DB so the user
+      // sees everything. New windows (Cmd+Shift+N) get marked with an empty list
+      // via the 'windowInitialized' flag so they start clean.
+      if (!sessionStorage.getItem('windowInitialized')) {
+        sessionStorage.setItem('windowInitialized', '1');
+        const isNewWindow = new URLSearchParams(window.location.search).has('new');
+        if (!isNewWindow) {
+          const resp = await window.electronAPI.getProjects();
+          if (resp.success && resp.data && resp.data.length > 0) {
+            for (const p of resp.data) {
+              addWindowProjectId(p.id);
+            }
+          }
+        }
+        // Clean up legacy localStorage keys
+        localStorage.removeItem('activeProjectId');
+        localStorage.removeItem('activeTaskId');
+      }
+      await loadProjects();
+    }
+    init();
     // Check agr availability once on mount
     window.electronAPI?.skillsAgrCheck()?.then((resp) => {
       if (resp.success) setAgrAvailable(resp.data ?? false);
@@ -305,15 +362,17 @@ export function App() {
     return unsubscribe;
   }, []);
 
-  // Persist selection to localStorage (survives CMD+R reload)
+  // Persist selection to sessionStorage (per-window, survives CMD+R reload)
   useEffect(() => {
-    if (activeProjectId) localStorage.setItem('activeProjectId', activeProjectId);
-    else localStorage.removeItem('activeProjectId');
+    if (activeProjectId) sessionStorage.setItem('activeProjectId', activeProjectId);
+    else sessionStorage.removeItem('activeProjectId');
   }, [activeProjectId]);
 
   useEffect(() => {
-    if (activeTaskId) localStorage.setItem('activeTaskId', activeTaskId);
-    else localStorage.removeItem('activeTaskId');
+    if (activeTaskId) sessionStorage.setItem('activeTaskId', activeTaskId);
+    else sessionStorage.removeItem('activeTaskId');
+    // Close file editor when switching tasks
+    setFileEditorState(null);
   }, [activeTaskId]);
 
   // Clear stale activeTaskId if it no longer exists in loaded tasks.
@@ -377,6 +436,7 @@ export function App() {
     const unsubscribe = window.electronAPI.onGitFileChanged((id) => {
       if (id === taskId) {
         refreshGitStatus(taskCwd, taskId);
+        setFileChangeVersion((v) => v + 1);
       }
     });
 
@@ -573,12 +633,15 @@ export function App() {
   async function loadProjects() {
     const resp = await window.electronAPI.getProjects();
     if (resp.success && resp.data) {
-      setProjects(resp.data);
-      if (resp.data.length > 0) {
-        // Only default to first project if no valid selection exists
+      const windowIds = getWindowProjectIds();
+      // Filter to only show projects open in this window
+      const filtered =
+        windowIds.length > 0 ? resp.data.filter((p) => windowIds.includes(p.id)) : [];
+      setProjects(filtered);
+      if (filtered.length > 0) {
         setActiveProjectId((prev) => {
-          if (prev && resp.data!.some((p) => p.id === prev)) return prev;
-          return resp.data![0].id;
+          if (prev && filtered.some((p) => p.id === prev)) return prev;
+          return filtered[0].id;
         });
       }
     }
@@ -645,6 +708,7 @@ export function App() {
       });
 
       if (saveResp.success && saveResp.data) {
+        addWindowProjectId(saveResp.data.id);
         await loadProjects();
         setActiveProjectId(saveResp.data.id);
       }
@@ -673,6 +737,7 @@ export function App() {
       });
 
       if (saveResp.success && saveResp.data) {
+        addWindowProjectId(saveResp.data.id);
         await loadProjects();
         setActiveProjectId(saveResp.data.id);
       }
@@ -685,6 +750,7 @@ export function App() {
   }
 
   async function handleDeleteProject(id: string) {
+    removeWindowProjectId(id);
     await window.electronAPI.deleteProject(id);
     if (activeProjectId === id) {
       setActiveProjectId(null);
@@ -718,7 +784,9 @@ export function App() {
   }, []);
 
   const handleRemoveTab = useCallback(async (taskId: string, tabId: string) => {
-    await sessionRegistry.dispose(tabId);
+    if (!tabId.startsWith('browser:')) {
+      await sessionRegistry.dispose(tabId);
+    }
     setExtraTabsByTask((prev) => {
       const next = { ...prev, [taskId]: (prev[taskId] || []).filter((id) => id !== tabId) };
       localStorage.setItem('extraTabsByTask', JSON.stringify(next));
@@ -730,6 +798,14 @@ export function App() {
       localStorage.setItem('activeTabByTask', JSON.stringify(next));
       return next;
     });
+    if (tabId.startsWith('browser:')) {
+      setBrowserTabTitles((prev) => {
+        const next = { ...prev };
+        delete next[tabId];
+        return next;
+      });
+      localStorage.removeItem(`browser:lastUrl:${tabId}`);
+    }
   }, []);
 
   const handleSelectTab = useCallback((taskId: string, tabId: string) => {
@@ -738,6 +814,24 @@ export function App() {
       localStorage.setItem('activeTabByTask', JSON.stringify(next));
       return next;
     });
+  }, []);
+
+  const handleAddBrowserTab = useCallback((taskId: string) => {
+    const tabId = `browser:${taskId}:${Date.now()}`;
+    setExtraTabsByTask((prev) => {
+      const next = { ...prev, [taskId]: [...(prev[taskId] || []), tabId] };
+      localStorage.setItem('extraTabsByTask', JSON.stringify(next));
+      return next;
+    });
+    setActiveTabByTask((prev) => {
+      const next = { ...prev, [taskId]: tabId };
+      localStorage.setItem('activeTabByTask', JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const handleBrowserTabTitleChange = useCallback((tabId: string, title: string) => {
+    setBrowserTabTitles((prev) => ({ ...prev, [tabId]: title }));
   }, []);
 
   function handleNewTask(projectId: string) {
@@ -889,11 +983,22 @@ export function App() {
     // Clean up shell terminal session
     sessionRegistry.dispose(`shell:${task.id}`);
 
-    // Dispose extra shell tabs
+    // Dispose extra tabs (shell + browser)
     const tabIds = extraTabsByTask[task.id] || [];
     for (const tabId of tabIds) {
-      await sessionRegistry.dispose(tabId);
+      if (tabId.startsWith('browser:')) {
+        localStorage.removeItem(`browser:lastUrl:${tabId}`);
+      } else {
+        await sessionRegistry.dispose(tabId);
+      }
     }
+    setBrowserTabTitles((prev) => {
+      const next = { ...prev };
+      for (const tabId of tabIds) {
+        delete next[tabId];
+      }
+      return next;
+    });
     setExtraTabsByTask((prev) => {
       const next = { ...prev };
       delete next[task.id];
@@ -1071,6 +1176,27 @@ export function App() {
               <Folders size={14} strokeWidth={1.8} />
             </button>
           )}
+          <button
+            onClick={() => {
+              if (viewMode === 'grid') {
+                const id = `browser:grid:${Date.now()}`;
+                setGridBrowserPanes((prev) => [...prev, id]);
+              } else {
+                setShowBrowser((prev) => !prev);
+              }
+            }}
+            disabled={viewMode !== 'grid' && !activeTask}
+            title={
+              viewMode === 'grid' ? 'Add browser' : showBrowser ? 'Hide browser' : 'Show browser'
+            }
+            className={`p-1.5 rounded-md transition-colors duration-150 ml-0.5 disabled:opacity-30 disabled:pointer-events-none ${
+              showBrowser && viewMode !== 'grid'
+                ? 'bg-primary/10 text-primary'
+                : 'text-muted-foreground/40 hover:text-foreground hover:bg-accent/60'
+            }`}
+          >
+            <Globe size={14} strokeWidth={1.8} />
+          </button>
         </div>
       </div>
 
@@ -1185,6 +1311,20 @@ export function App() {
                   // the sidebar and the task can be pulled back into the grid.
                   setGridHiddenTaskIds((prev) => new Set([...prev, taskId]));
                 }}
+                browserPanes={gridBrowserPanes}
+                browserTitles={gridBrowserTitles}
+                onRemoveBrowserPane={(id) => {
+                  setGridBrowserPanes((prev) => prev.filter((p) => p !== id));
+                  setGridBrowserTitles((prev) => {
+                    const next = { ...prev };
+                    delete next[id];
+                    return next;
+                  });
+                  localStorage.removeItem(`browser:lastUrl:${id}`);
+                }}
+                onBrowserTitleChange={(id, title) => {
+                  setGridBrowserTitles((prev) => ({ ...prev, [id]: title }));
+                }}
               />
             ) : (
               <MainContent
@@ -1203,6 +1343,7 @@ export function App() {
                 onAddTab={() => activeTask && handleAddTab(activeTask.id)}
                 onRemoveTab={(tabId) => activeTask && handleRemoveTab(activeTask.id, tabId)}
                 onSelectTab={(tabId) => activeTask && handleSelectTab(activeTask.id, tabId)}
+                showBrowser={showBrowser}
               />
             )}
           </ShellDrawerWrapper>
@@ -1266,12 +1407,32 @@ export function App() {
                   collapsed={changesPanelCollapsed}
                   onToggleCollapse={toggleChangesPanel}
                   onShowCommitGraph={() => setShowCommitGraph(true)}
+                  rightPanelView={rightPanelView}
+                  onRightPanelViewChange={(view) => {
+                    setRightPanelView(view);
+                    sessionStorage.setItem('rightPanelView', view);
+                  }}
+                  taskCwd={activeTask?.path ?? null}
+                  fileChangeVersion={fileChangeVersion}
+                  onOpenFile={(relativePath) => {
+                    if (activeTask) {
+                      setFileEditorState({ relativePath, cwd: activeTask.path });
+                    }
+                  }}
                 />
               </ShellDrawerWrapper>
             </Panel>
           </>
         )}
       </PanelGroup>
+
+      {fileEditorState && (
+        <FileEditorModal
+          cwd={fileEditorState.cwd}
+          relativePath={fileEditorState.relativePath}
+          onClose={() => setFileEditorState(null)}
+        />
+      )}
 
       {showAddProjectModal && (
         <AddProjectModal

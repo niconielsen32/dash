@@ -5,6 +5,7 @@ import { registerPtyIpc } from './ptyIpc';
 import { registerGitIpc } from './gitIpc';
 import { registerGithubIpc } from './githubIpc';
 import { registerSkillsIpc } from './skillsIpc';
+import { registerFsIpc } from './fsIpc';
 
 export function registerAllIpc(): void {
   registerAppIpc();
@@ -14,4 +15,5 @@ export function registerAllIpc(): void {
   registerGitIpc();
   registerGithubIpc();
   registerSkillsIpc();
+  registerFsIpc();
 }

@@ -16,8 +16,14 @@ import {
   PanelRightOpen,
   PanelRightClose,
   GitBranch,
+  FolderTree,
+  FolderPlus,
+  Folder,
 } from 'lucide-react';
 import type { FileChange, FileChangeStatus, GitStatus } from '../../shared/types';
+import { FileTreePanel } from './FileTreePanel';
+
+export type RightPanelView = 'changes' | 'files';
 
 interface FileChangesPanelProps {
   gitStatus: GitStatus | null;
@@ -33,6 +39,11 @@ interface FileChangesPanelProps {
   collapsed?: boolean;
   onToggleCollapse?: () => void;
   onShowCommitGraph?: () => void;
+  rightPanelView: RightPanelView;
+  onRightPanelViewChange: (view: RightPanelView) => void;
+  taskCwd: string | null;
+  fileChangeVersion: number;
+  onOpenFile: (relativePath: string) => void;
 }
 
 const STATUS_COLORS: Record<FileChangeStatus, string> = {
@@ -123,9 +134,7 @@ function FileItem({
 
       <span className="truncate flex-1 min-w-0" title={file.path}>
         <span className="text-foreground/90">{fileName}</span>
-        {dirPath && (
-          <span className="text-muted-foreground/40 ml-1">{dirPath}/</span>
-        )}
+        {dirPath && <span className="text-muted-foreground/40 ml-1">{dirPath}/</span>}
       </span>
 
       {/* Stat badge */}
@@ -141,7 +150,9 @@ function FileItem({
       )}
 
       {/* Status badge */}
-      <span className={`w-[18px] h-[16px] rounded flex items-center justify-center text-[9px] font-bold flex-shrink-0 ${STATUS_BADGE_COLORS[file.status]}`}>
+      <span
+        className={`w-[18px] h-[16px] rounded flex items-center justify-center text-[9px] font-bold flex-shrink-0 ${STATUS_BADGE_COLORS[file.status]}`}
+      >
         {STATUS_LABELS[file.status]}
       </span>
 
@@ -149,7 +160,10 @@ function FileItem({
       {!file.staged && (
         <div className="opacity-0 group-hover:opacity-100 flex gap-px flex-shrink-0 transition-all duration-150">
           <button
-            onClick={(e) => { e.stopPropagation(); onDiscard(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDiscard();
+            }}
             className="p-[3px] rounded hover:bg-destructive/15 text-muted-foreground/50 hover:text-destructive"
             title="Discard changes"
           >
@@ -175,11 +189,17 @@ export function FileChangesPanel({
   collapsed,
   onToggleCollapse,
   onShowCommitGraph,
+  rightPanelView,
+  onRightPanelViewChange,
+  taskCwd,
+  fileChangeVersion,
+  onOpenFile,
 }: FileChangesPanelProps) {
   const [commitMsg, setCommitMsg] = useState('');
   const [committing, setCommitting] = useState(false);
   const [pushing, setPushing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [createFolderTrigger, setCreateFolderTrigger] = useState(0);
 
   // Track previous file keys to detect newly added files
   const prevFileKeysRef = useRef<Set<string>>(new Set());
@@ -212,15 +232,19 @@ export function FileChangesPanel({
         <button
           onClick={onToggleCollapse}
           className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-accent/60 text-muted-foreground/50 hover:text-foreground transition-colors"
-          title="Expand changes panel"
+          title="Expand panel"
         >
           <PanelRightOpen size={18} strokeWidth={1.5} />
         </button>
         <div className="flex flex-col items-center gap-1">
           <div className="w-8 h-8 rounded-lg bg-accent/40 flex items-center justify-center">
-            <FileDiff size={14} className="text-muted-foreground/50" strokeWidth={1.5} />
+            {rightPanelView === 'files' ? (
+              <Folder size={14} className="text-muted-foreground/50" strokeWidth={1.5} />
+            ) : (
+              <FileDiff size={14} className="text-muted-foreground/50" strokeWidth={1.5} />
+            )}
           </div>
-          {totalChanges > 0 && (
+          {rightPanelView === 'changes' && totalChanges > 0 && (
             <span className="min-w-[18px] h-[16px] flex items-center justify-center rounded-full bg-primary/15 text-[10px] font-bold text-primary tabular-nums px-1">
               {totalChanges}
             </span>
@@ -230,9 +254,12 @@ export function FileChangesPanel({
     );
   }
 
-  if (!gitStatus) {
+  if (!gitStatus && rightPanelView === 'changes') {
     return (
-      <div className="h-full flex items-center justify-center" style={{ background: 'hsl(var(--surface-1))' }}>
+      <div
+        className="h-full flex items-center justify-center"
+        style={{ background: 'hsl(var(--surface-1))' }}
+      >
         <p className="text-[11px] text-muted-foreground/40">
           {loading ? 'Loading...' : 'No task selected'}
         </p>
@@ -240,8 +267,8 @@ export function FileChangesPanel({
     );
   }
 
-  const stagedFiles = gitStatus.files.filter((f) => f.staged);
-  const unstagedFiles = gitStatus.files.filter((f) => !f.staged);
+  const stagedFiles = gitStatus?.files.filter((f) => f.staged) ?? [];
+  const unstagedFiles = gitStatus?.files.filter((f) => !f.staged) ?? [];
   const allStaged = unstagedFiles.length === 0 && stagedFiles.length > 0;
   const noneStaged = stagedFiles.length === 0;
 
@@ -271,8 +298,13 @@ export function FileChangesPanel({
     }
   }
 
+  const isFilesView = rightPanelView === 'files';
+
   return (
-    <div className="h-full flex flex-col overflow-hidden" style={{ background: 'hsl(var(--surface-1))' }}>
+    <div
+      className="h-full flex flex-col overflow-hidden"
+      style={{ background: 'hsl(var(--surface-1))' }}
+    >
       {/* Header */}
       <div className="flex items-center justify-between px-3 h-10 flex-shrink-0 border-b border-border/60">
         <div className="flex items-center gap-2">
@@ -280,153 +312,213 @@ export function FileChangesPanel({
             <button
               onClick={onToggleCollapse}
               className="p-[3px] -ml-1 rounded hover:bg-accent text-muted-foreground/60 hover:text-foreground transition-colors"
-              title="Collapse changes panel"
+              title="Collapse panel"
             >
               <PanelRightClose size={15} strokeWidth={1.8} />
             </button>
           )}
+          {/* View toggle */}
+          <div className="flex items-center gap-0.5">
+            <button
+              onClick={() => onRightPanelViewChange('changes')}
+              className={`p-[4px] rounded transition-colors ${
+                !isFilesView
+                  ? 'bg-accent text-foreground'
+                  : 'text-muted-foreground/40 hover:text-foreground'
+              }`}
+              title="Git changes"
+            >
+              <FileDiff size={12} strokeWidth={2} />
+            </button>
+            <button
+              onClick={() => onRightPanelViewChange('files')}
+              className={`p-[4px] rounded transition-colors ${
+                isFilesView
+                  ? 'bg-accent text-foreground'
+                  : 'text-muted-foreground/40 hover:text-foreground'
+              }`}
+              title="File browser"
+            >
+              <FolderTree size={12} strokeWidth={2} />
+            </button>
+          </div>
           <span className="text-[11px] font-semibold uppercase text-foreground/80 tracking-[0.08em]">
-            Changes
+            {isFilesView ? 'Files' : 'Changes'}
           </span>
-          {totalChanges > 0 && (
+          {!isFilesView && totalChanges > 0 && (
             <span className="min-w-[18px] h-[16px] flex items-center justify-center rounded-full bg-primary/15 text-[10px] font-bold text-primary tabular-nums px-1">
               {totalChanges}
             </span>
           )}
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
-          {onShowCommitGraph && (
+          {isFilesView ? (
             <button
-              onClick={onShowCommitGraph}
+              onClick={() => setCreateFolderTrigger((n) => n + 1)}
               className="p-[3px] rounded hover:bg-accent text-muted-foreground/40 hover:text-foreground transition-colors"
-              title="Commit graph"
+              title="New folder"
             >
-              <GitBranch size={11} strokeWidth={2} />
+              <FolderPlus size={11} strokeWidth={2} />
             </button>
-          )}
-          {gitStatus.branch && (gitStatus.ahead > 0 || gitStatus.behind > 0) && (
-            <div className="flex items-center gap-1 text-muted-foreground/40 mr-1">
-              {gitStatus.ahead > 0 && (
-                <span className="flex items-center gap-0.5 text-[9px] text-[hsl(var(--git-added))]">
-                  <ArrowUp size={8} strokeWidth={2.5} />{gitStatus.ahead}
-                </span>
+          ) : (
+            <>
+              {onShowCommitGraph && (
+                <button
+                  onClick={onShowCommitGraph}
+                  className="p-[3px] rounded hover:bg-accent text-muted-foreground/40 hover:text-foreground transition-colors"
+                  title="Commit graph"
+                >
+                  <GitBranch size={11} strokeWidth={2} />
+                </button>
               )}
-              {gitStatus.behind > 0 && (
-                <span className="flex items-center gap-0.5 text-[9px] text-[hsl(var(--git-deleted))]">
-                  <ArrowDown size={8} strokeWidth={2.5} />{gitStatus.behind}
-                </span>
+              {gitStatus && gitStatus.branch && (gitStatus.ahead > 0 || gitStatus.behind > 0) && (
+                <div className="flex items-center gap-1 text-muted-foreground/40 mr-1">
+                  {gitStatus.ahead > 0 && (
+                    <span className="flex items-center gap-0.5 text-[9px] text-[hsl(var(--git-added))]">
+                      <ArrowUp size={8} strokeWidth={2.5} />
+                      {gitStatus.ahead}
+                    </span>
+                  )}
+                  {gitStatus.behind > 0 && (
+                    <span className="flex items-center gap-0.5 text-[9px] text-[hsl(var(--git-deleted))]">
+                      <ArrowDown size={8} strokeWidth={2.5} />
+                      {gitStatus.behind}
+                    </span>
+                  )}
+                </div>
               )}
-            </div>
-          )}
-          {!allStaged && unstagedFiles.length > 0 && (
-            <button
-              onClick={() => onStageAll()}
-              className="p-[3px] rounded hover:bg-accent text-muted-foreground/40 hover:text-foreground transition-colors"
-              title="Stage all"
-            >
-              <Plus size={11} strokeWidth={2} />
-            </button>
-          )}
-          {stagedFiles.length > 0 && (
-            <button
-              onClick={() => onUnstageAll()}
-              className="p-[3px] rounded hover:bg-accent text-muted-foreground/40 hover:text-foreground transition-colors"
-              title="Unstage all"
-            >
-              <Minus size={11} strokeWidth={2} />
-            </button>
+              {!allStaged && unstagedFiles.length > 0 && (
+                <button
+                  onClick={() => onStageAll()}
+                  className="p-[3px] rounded hover:bg-accent text-muted-foreground/40 hover:text-foreground transition-colors"
+                  title="Stage all"
+                >
+                  <Plus size={11} strokeWidth={2} />
+                </button>
+              )}
+              {stagedFiles.length > 0 && (
+                <button
+                  onClick={() => onUnstageAll()}
+                  className="p-[3px] rounded hover:bg-accent text-muted-foreground/40 hover:text-foreground transition-colors"
+                  title="Unstage all"
+                >
+                  <Minus size={11} strokeWidth={2} />
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>
 
-      {/* File list */}
-      <div className="flex-1 overflow-y-auto">
-        {totalChanges === 0 && (
-          <div className="flex flex-col items-center justify-center h-full gap-2">
-            <div className="w-8 h-8 rounded-xl bg-accent/40 flex items-center justify-center">
-              <FileDiff size={14} className="text-foreground/50" strokeWidth={1.5} />
-            </div>
-            <p className="text-[11px] text-foreground/60">No changes</p>
-            {gitStatus && gitStatus.ahead > 0 && (
-              <p className="text-[10px] text-muted-foreground/40">
-                {gitStatus.ahead} commit{gitStatus.ahead !== 1 ? 's' : ''} ahead
-              </p>
-            )}
-          </div>
-        )}
-
-        {totalChanges > 0 && (
-          <div className="px-1 py-1">
-            {/* Staged files first, then unstaged */}
-            {stagedFiles.map((file) => (
-              <FileItem
-                key={`staged-${file.path}`}
-                file={file}
-                isNew={newFileKeysRef.current.has(`s-${file.path}`)}
-                onStage={() => {}}
-                onUnstage={() => onUnstageFile(file.path)}
-                onDiscard={() => {}}
-                onViewDiff={() => onViewDiff(file.path, true)}
-              />
-            ))}
-            {unstagedFiles.map((file) => (
-              <FileItem
-                key={`unstaged-${file.path}`}
-                file={file}
-                isNew={newFileKeysRef.current.has(`u-${file.path}`)}
-                onStage={() => onStageFile(file.path)}
-                onUnstage={() => {}}
-                onDiscard={() => onDiscardFile(file.path)}
-                onViewDiff={() => onViewDiff(file.path, false)}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Commit area */}
-      {totalChanges > 0 && (
-        <div className="flex-shrink-0 border-t border-border/60 p-2 flex flex-col gap-1.5">
-          {error && (
-            <p className="text-[11px] text-destructive bg-destructive/10 rounded px-2 py-1 break-words">
-              {error}
-            </p>
-          )}
-          <textarea
-            value={commitMsg}
-            onChange={(e) => { setCommitMsg(e.target.value); setError(null); }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && e.metaKey) {
-                e.preventDefault();
-                handleCommit();
-              }
-            }}
-            placeholder={noneStaged ? 'Stage files to commit...' : 'Commit message'}
-            disabled={noneStaged}
-            rows={2}
-            className="w-full text-[12px] bg-background/60 border border-border/60 rounded-md px-2.5 py-1.5 resize-none placeholder:text-muted-foreground/30 focus:outline-none focus:border-primary/40 disabled:opacity-40 disabled:cursor-not-allowed"
+      {/* Content */}
+      {isFilesView ? (
+        taskCwd ? (
+          <FileTreePanel
+            cwd={taskCwd}
+            fileChangeVersion={fileChangeVersion}
+            onOpenFile={onOpenFile}
+            createRootFolderTrigger={createFolderTrigger}
           />
-          <div className="flex gap-1.5">
-            <button
-              onClick={handleCommit}
-              disabled={!commitMsg.trim() || noneStaged || committing}
-              className="flex-1 flex items-center justify-center gap-1.5 h-7 rounded-md text-[11px] font-medium transition-colors bg-primary/15 text-primary hover:bg-primary/25 disabled:opacity-30 disabled:cursor-not-allowed"
-            >
-              <Check size={11} strokeWidth={2.5} />
-              {committing ? 'Committing...' : 'Commit'}
-            </button>
-            {gitStatus.ahead > 0 && (
-              <button
-                onClick={handlePush}
-                disabled={pushing}
-                className="flex items-center justify-center gap-1.5 h-7 px-3 rounded-md text-[11px] font-medium transition-colors bg-accent hover:bg-accent/80 text-foreground/80 disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                <Upload size={10} strokeWidth={2.5} />
-                {pushing ? 'Pushing...' : 'Push'}
-              </button>
+        ) : (
+          <div className="flex items-center justify-center h-full">
+            <p className="text-[11px] text-muted-foreground/40">No task selected</p>
+          </div>
+        )
+      ) : (
+        <>
+          {/* File list */}
+          <div className="flex-1 overflow-y-auto">
+            {totalChanges === 0 && (
+              <div className="flex flex-col items-center justify-center h-full gap-2">
+                <div className="w-8 h-8 rounded-xl bg-accent/40 flex items-center justify-center">
+                  <FileDiff size={14} className="text-foreground/50" strokeWidth={1.5} />
+                </div>
+                <p className="text-[11px] text-foreground/60">No changes</p>
+                {gitStatus && gitStatus.ahead > 0 && (
+                  <p className="text-[10px] text-muted-foreground/40">
+                    {gitStatus.ahead} commit{gitStatus.ahead !== 1 ? 's' : ''} ahead
+                  </p>
+                )}
+              </div>
+            )}
+
+            {totalChanges > 0 && (
+              <div className="px-1 py-1">
+                {/* Staged files first, then unstaged */}
+                {stagedFiles.map((file) => (
+                  <FileItem
+                    key={`staged-${file.path}`}
+                    file={file}
+                    isNew={newFileKeysRef.current.has(`s-${file.path}`)}
+                    onStage={() => {}}
+                    onUnstage={() => onUnstageFile(file.path)}
+                    onDiscard={() => {}}
+                    onViewDiff={() => onViewDiff(file.path, true)}
+                  />
+                ))}
+                {unstagedFiles.map((file) => (
+                  <FileItem
+                    key={`unstaged-${file.path}`}
+                    file={file}
+                    isNew={newFileKeysRef.current.has(`u-${file.path}`)}
+                    onStage={() => onStageFile(file.path)}
+                    onUnstage={() => {}}
+                    onDiscard={() => onDiscardFile(file.path)}
+                    onViewDiff={() => onViewDiff(file.path, false)}
+                  />
+                ))}
+              </div>
             )}
           </div>
-        </div>
+
+          {/* Commit area */}
+          {totalChanges > 0 && (
+            <div className="flex-shrink-0 border-t border-border/60 p-2 flex flex-col gap-1.5">
+              {error && (
+                <p className="text-[11px] text-destructive bg-destructive/10 rounded px-2 py-1 break-words">
+                  {error}
+                </p>
+              )}
+              <textarea
+                value={commitMsg}
+                onChange={(e) => {
+                  setCommitMsg(e.target.value);
+                  setError(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && e.metaKey) {
+                    e.preventDefault();
+                    handleCommit();
+                  }
+                }}
+                placeholder={noneStaged ? 'Stage files to commit...' : 'Commit message'}
+                disabled={noneStaged}
+                rows={2}
+                className="w-full text-[12px] bg-background/60 border border-border/60 rounded-md px-2.5 py-1.5 resize-none placeholder:text-muted-foreground/30 focus:outline-none focus:border-primary/40 disabled:opacity-40 disabled:cursor-not-allowed"
+              />
+              <div className="flex gap-1.5">
+                <button
+                  onClick={handleCommit}
+                  disabled={!commitMsg.trim() || noneStaged || committing}
+                  className="flex-1 flex items-center justify-center gap-1.5 h-7 rounded-md text-[11px] font-medium transition-colors bg-primary/15 text-primary hover:bg-primary/25 disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <Check size={11} strokeWidth={2.5} />
+                  {committing ? 'Committing...' : 'Commit'}
+                </button>
+                {gitStatus && gitStatus.ahead > 0 && (
+                  <button
+                    onClick={handlePush}
+                    disabled={pushing}
+                    className="flex items-center justify-center gap-1.5 h-7 px-3 rounded-md text-[11px] font-medium transition-colors bg-accent hover:bg-accent/80 text-foreground/80 disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    <Upload size={10} strokeWidth={2.5} />
+                    {pushing ? 'Pushing...' : 'Push'}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

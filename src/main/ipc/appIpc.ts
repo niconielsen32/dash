@@ -49,7 +49,7 @@ export function registerAppIpc(): void {
 
   ipcMain.handle('app:newWindow', async () => {
     const { openNewWindow } = await import('../main');
-    await openNewWindow();
+    await openNewWindow({ isNew: true });
   });
 
   ipcMain.handle('app:openExternal', async (_event, url: string) => {

@@ -191,6 +191,14 @@ export interface CommitDetail {
   stats: { additions: number; deletions: number; filesChanged: number };
 }
 
+// ── File System Types ───────────────────────────────────────
+
+export interface DirectoryEntry {
+  name: string;
+  path: string;
+  isDirectory: boolean;
+}
+
 // ── GitHub Types ────────────────────────────────────────────
 
 export interface GithubIssue {

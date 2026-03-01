@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, ChevronDown, ChevronRight } from 'lucide-react';
+import { X, ChevronDown, ChevronRight, Globe } from 'lucide-react';
 import { TerminalPane } from './TerminalPane';
+import { BrowserPane } from './BrowserPane';
 import type { Task, Project } from '@shared/types';
 
 interface MultiTerminalGridProps {
@@ -9,6 +10,10 @@ interface MultiTerminalGridProps {
   taskActivity: Record<string, 'busy' | 'idle' | 'waiting'>;
   groupByProject?: boolean;
   onRemoveTask?: (taskId: string) => void;
+  browserPanes?: string[];
+  browserTitles?: Record<string, string>;
+  onRemoveBrowserPane?: (id: string) => void;
+  onBrowserTitleChange?: (id: string, title: string) => void;
 }
 
 function gridColsCount(count: number): number {
@@ -91,6 +96,14 @@ function GroupActivitySummary({
   );
 }
 
+interface CellDragHandlers {
+  onDragStart: () => void;
+  onDragOver: (e: React.DragEvent) => void;
+  onDragLeave: () => void;
+  onDrop: (e: React.DragEvent) => void;
+  onDragEnd: () => void;
+}
+
 function TaskCell({
   task,
   project,
@@ -98,12 +111,8 @@ function TaskCell({
   taskActivity,
   isDragOver,
   onRemoveTask,
-  onDragStart,
-  onDragOver,
-  onDragLeave,
-  onDrop,
-  onDragEnd,
   style,
+  ...dragHandlers
 }: {
   task: Task;
   project: Project | undefined;
@@ -111,22 +120,17 @@ function TaskCell({
   taskActivity: Record<string, 'busy' | 'idle' | 'waiting'>;
   isDragOver: boolean;
   onRemoveTask?: (id: string) => void;
-  onDragStart: () => void;
-  onDragOver: (e: React.DragEvent) => void;
-  onDragLeave: () => void;
-  onDrop: (e: React.DragEvent) => void;
-  onDragEnd: () => void;
   style?: React.CSSProperties;
-}) {
+} & CellDragHandlers) {
   return (
     <div className="group flex flex-col min-h-0 bg-background" style={style}>
       <div
         draggable
-        onDragStart={onDragStart}
-        onDragOver={onDragOver}
-        onDragLeave={onDragLeave}
-        onDrop={onDrop}
-        onDragEnd={onDragEnd}
+        onDragStart={dragHandlers.onDragStart}
+        onDragOver={dragHandlers.onDragOver}
+        onDragLeave={dragHandlers.onDragLeave}
+        onDrop={dragHandlers.onDrop}
+        onDragEnd={dragHandlers.onDragEnd}
         className="h-[26px] flex-shrink-0 flex items-center gap-1.5 px-2 border-b border-border/40 cursor-grab active:cursor-grabbing select-none transition-colors duration-100"
         style={{
           background: isDragOver ? 'hsl(var(--primary) / 0.08)' : 'hsl(var(--surface-1))',
@@ -160,14 +164,55 @@ function TaskCell({
   );
 }
 
+function BrowserCell({
+  id,
+  isDragOver,
+  onRemove,
+  onTitleChange,
+  style,
+  ...dragHandlers
+}: {
+  id: string;
+  isDragOver: boolean;
+  onRemove?: (id: string) => void;
+  onTitleChange?: (id: string, title: string) => void;
+  style?: React.CSSProperties;
+} & CellDragHandlers) {
+  return (
+    <div
+      className="group flex flex-col min-h-0 bg-background"
+      style={style}
+      draggable
+      onDragStart={dragHandlers.onDragStart}
+      onDragOver={dragHandlers.onDragOver}
+      onDragLeave={dragHandlers.onDragLeave}
+      onDrop={dragHandlers.onDrop}
+      onDragEnd={dragHandlers.onDragEnd}
+    >
+      <div className="flex-1 min-h-0">
+        <BrowserPane
+          id={id}
+          onTitleChange={(t) => onTitleChange?.(id, t)}
+          onClose={onRemove ? () => onRemove(id) : undefined}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function MultiTerminalGrid({
   tasks,
   projects,
   taskActivity,
   groupByProject = true,
   onRemoveTask,
+  browserPanes = [],
+  browserTitles = {},
+  onRemoveBrowserPane,
+  onBrowserTitleChange,
 }: MultiTerminalGridProps) {
-  const [order, setOrder] = useState<string[]>(() => tasks.map((t) => t.id));
+  // Unified order: browser panes first, then task IDs
+  const [order, setOrder] = useState<string[]>(() => [...browserPanes, ...tasks.map((t) => t.id)]);
   const draggedId = useRef<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(new Set());
@@ -181,16 +226,20 @@ export function MultiTerminalGrid({
     });
   }
 
+  // Sync order with current tasks + browser panes (new browsers added at top)
   useEffect(() => {
     setOrder((prev) => {
-      const taskIds = new Set(tasks.map((t) => t.id));
-      const kept = prev.filter((id) => taskIds.has(id));
-      const added = tasks.map((t) => t.id).filter((id) => !prev.includes(id));
-      return [...kept, ...added];
+      const allIds = new Set([...tasks.map((t) => t.id), ...browserPanes]);
+      const kept = prev.filter((id) => allIds.has(id));
+      const newBrowsers = browserPanes.filter((id) => !prev.includes(id));
+      const newTasks = tasks.map((t) => t.id).filter((id) => !prev.includes(id));
+      return [...newBrowsers, ...kept, ...newTasks];
     });
-  }, [tasks]);
+  }, [tasks, browserPanes]);
 
-  if (tasks.length === 0) {
+  const totalItems = tasks.length + browserPanes.length;
+
+  if (totalItems === 0) {
     return (
       <div className="h-full flex items-center justify-center">
         <p className="text-[13px] text-muted-foreground/50">
@@ -200,23 +249,25 @@ export function MultiTerminalGrid({
     );
   }
 
-  const orderedTasks = order.map((id) => tasks.find((t) => t.id === id)).filter(Boolean) as Task[];
+  const taskMap = new Map(tasks.map((t) => [t.id, t]));
+  const browserSet = new Set(browserPanes);
+  const orderedItems = order.filter((id) => taskMap.has(id) || browserSet.has(id));
 
-  function makeDragHandlers(taskId: string) {
+  function makeDragHandlers(itemId: string) {
     return {
       onDragStart: () => {
-        draggedId.current = taskId;
+        draggedId.current = itemId;
       },
       onDragOver: (e: React.DragEvent) => {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
-        if (dragOverId !== taskId) setDragOverId(taskId);
+        if (dragOverId !== itemId) setDragOverId(itemId);
       },
       onDragLeave: () => setDragOverId(null),
       onDrop: (e: React.DragEvent) => {
         e.preventDefault();
         const from = draggedId.current;
-        const to = taskId;
+        const to = itemId;
         if (from && from !== to) {
           setOrder((prev) => {
             const next = [...prev];
@@ -237,19 +288,84 @@ export function MultiTerminalGrid({
     };
   }
 
+  function renderCell(itemId: string, index: number, total: number, showProject: boolean) {
+    const task = taskMap.get(itemId);
+    if (task) {
+      return (
+        <TaskCell
+          key={task.id}
+          task={task}
+          project={projects.find((p) => p.id === task.projectId)}
+          showProject={showProject}
+          taskActivity={taskActivity}
+          isDragOver={dragOverId === task.id}
+          onRemoveTask={onRemoveTask}
+          style={cellSpanStyle(index, total)}
+          {...makeDragHandlers(task.id)}
+        />
+      );
+    }
+    if (browserSet.has(itemId)) {
+      return (
+        <BrowserCell
+          key={itemId}
+          id={itemId}
+          isDragOver={dragOverId === itemId}
+          onRemove={onRemoveBrowserPane}
+          onTitleChange={onBrowserTitleChange}
+          style={cellSpanStyle(index, total)}
+          {...makeDragHandlers(itemId)}
+        />
+      );
+    }
+    return null;
+  }
+
   if (groupByProject) {
     const projectIdOrder: string[] = [];
     const tasksByProjectId: Record<string, Task[]> = {};
-    for (const task of orderedTasks) {
-      if (!tasksByProjectId[task.projectId]) {
-        projectIdOrder.push(task.projectId);
-        tasksByProjectId[task.projectId] = [];
+    const groupBrowserIds: string[] = [];
+
+    for (const itemId of orderedItems) {
+      const task = taskMap.get(itemId);
+      if (task) {
+        if (!tasksByProjectId[task.projectId]) {
+          projectIdOrder.push(task.projectId);
+          tasksByProjectId[task.projectId] = [];
+        }
+        tasksByProjectId[task.projectId].push(task);
+      } else if (browserSet.has(itemId)) {
+        groupBrowserIds.push(itemId);
       }
-      tasksByProjectId[task.projectId].push(task);
     }
 
     return (
       <div className="h-full flex flex-col gap-[1px] bg-border/40 overflow-hidden">
+        {/* Browser panes — always at top, 16:9 aspect ratio, capped at 55% height */}
+        {groupBrowserIds.length > 0 && (
+          <div
+            className="flex-shrink-0 w-full"
+            style={{ aspectRatio: `${16 * groupBrowserIds.length} / 9`, maxHeight: '60%' }}
+          >
+            <div
+              className={`h-full grid ${gridColsClass(groupBrowserIds.length)} gap-[1px] bg-border/40`}
+              style={{ gridAutoRows: '1fr' }}
+            >
+              {groupBrowserIds.map((id, i) => (
+                <BrowserCell
+                  key={id}
+                  id={id}
+                  isDragOver={dragOverId === id}
+                  onRemove={onRemoveBrowserPane}
+                  onTitleChange={onBrowserTitleChange}
+                  style={cellSpanStyle(i, groupBrowserIds.length)}
+                  {...makeDragHandlers(id)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
         {projectIdOrder.map((projectId) => {
           const project = projects.find((p) => p.id === projectId);
           const groupTasks = tasksByProjectId[projectId];
@@ -308,24 +424,13 @@ export function MultiTerminalGrid({
     );
   }
 
+  // Flat mode — all items in one grid
   return (
     <div
-      className={`h-full grid ${gridColsClass(orderedTasks.length)} gap-[1px] bg-border/40`}
+      className={`h-full grid ${gridColsClass(orderedItems.length)} gap-[1px] bg-border/40`}
       style={{ gridAutoRows: '1fr' }}
     >
-      {orderedTasks.map((task, i) => (
-        <TaskCell
-          key={task.id}
-          task={task}
-          project={projects.find((p) => p.id === task.projectId)}
-          showProject
-          taskActivity={taskActivity}
-          isDragOver={dragOverId === task.id}
-          onRemoveTask={onRemoveTask}
-          style={cellSpanStyle(i, orderedTasks.length)}
-          {...makeDragHandlers(task.id)}
-        />
-      ))}
+      {orderedItems.map((itemId, i) => renderCell(itemId, i, orderedItems.length, true))}
     </div>
   );
 }

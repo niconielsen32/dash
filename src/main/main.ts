@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, Menu } from 'electron';
 import * as path from 'path';
 import * as os from 'os';
 import { execFile } from 'child_process';
@@ -70,9 +70,9 @@ if (!gotLock) {
 // ── Window Management ─────────────────────────────────────────
 let mainWindow: BrowserWindow | null = null;
 
-export async function openNewWindow(): Promise<BrowserWindow> {
+export async function openNewWindow(opts?: { isNew?: boolean }): Promise<BrowserWindow> {
   const { createWindow } = await import('./window');
-  const win = createWindow();
+  const win = createWindow({ isNew: opts?.isNew });
 
   // Kill PTYs owned by this window when it closes
   win.on('close', () => {
@@ -86,6 +86,67 @@ export async function openNewWindow(): Promise<BrowserWindow> {
 
 // ── App Ready ─────────────────────────────────────────────────
 app.whenReady().then(async () => {
+  // Build application menu
+  const template: Electron.MenuItemConstructorOptions[] = [
+    {
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' },
+      ],
+    },
+    {
+      label: 'File',
+      submenu: [
+        {
+          label: 'New Window',
+          accelerator: 'CmdOrCtrl+Shift+N',
+          click: () => openNewWindow({ isNew: true }),
+        },
+        { type: 'separator' },
+        { role: 'close' },
+      ],
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' },
+      ],
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' },
+      ],
+    },
+    {
+      label: 'Window',
+      submenu: [{ role: 'minimize' }, { role: 'zoom' }, { type: 'separator' }, { role: 'front' }],
+    },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+
   // Initialize database
   const { DatabaseService } = await import('./services/DatabaseService');
   await DatabaseService.initialize();
@@ -143,10 +204,7 @@ async function detectClaudeCli(): Promise<void> {
 
 // ── App Lifecycle ─────────────────────────────────────────────
 app.on('second-instance', () => {
-  if (mainWindow) {
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.focus();
-  }
+  openNewWindow({ isNew: true });
 });
 
 app.on('window-all-closed', () => {

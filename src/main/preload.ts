@@ -214,6 +214,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('skills:moveSkill', args),
   skillsWatchDirs: (args: { globalDir: string; projectDir?: string }) =>
     ipcRenderer.invoke('skills:watchDirs', args),
+
+  // Filesystem
+  fsReadDir: (args: { cwd: string; relativePath?: string }) =>
+    ipcRenderer.invoke('fs:readDir', args),
+  fsReadFile: (args: { cwd: string; relativePath: string }) =>
+    ipcRenderer.invoke('fs:readFile', args),
+  fsWriteFile: (args: { cwd: string; relativePath: string; content: string }) =>
+    ipcRenderer.invoke('fs:writeFile', args),
+  fsCopyFile: (args: { cwd: string; sourcePath: string; destDir: string; fileName: string }) =>
+    ipcRenderer.invoke('fs:copyFile', args),
+  fsCreateDir: (args: { cwd: string; relativePath: string }) =>
+    ipcRenderer.invoke('fs:createDir', args),
+
   onSkillsChanged: (callback: () => void) => {
     const handler = () => callback();
     ipcRenderer.on('skills:changed', handler);

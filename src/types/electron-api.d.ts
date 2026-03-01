@@ -13,6 +13,7 @@ import type {
   CommitDetail,
   RemoteControlState,
   Skill,
+  DirectoryEntry,
 } from '../shared/types';
 
 export interface ElectronAPI {
@@ -251,10 +252,43 @@ export interface ElectronAPI {
   skillsMoveSkill: (args: { oldDir: string; newDir: string }) => Promise<IpcResponse<void>>;
   skillsWatchDirs: (args: { globalDir: string; projectDir?: string }) => Promise<IpcResponse<void>>;
   onSkillsChanged: (callback: () => void) => () => void;
+
+  // Filesystem
+  fsReadDir: (args: {
+    cwd: string;
+    relativePath?: string;
+  }) => Promise<IpcResponse<DirectoryEntry[]>>;
+  fsReadFile: (args: { cwd: string; relativePath: string }) => Promise<IpcResponse<string>>;
+  fsWriteFile: (args: {
+    cwd: string;
+    relativePath: string;
+    content: string;
+  }) => Promise<IpcResponse<null>>;
+  fsCopyFile: (args: {
+    cwd: string;
+    sourcePath: string;
+    destDir: string;
+    fileName: string;
+  }) => Promise<IpcResponse<null>>;
+  fsCreateDir: (args: { cwd: string; relativePath: string }) => Promise<IpcResponse<null>>;
 }
 
 declare global {
   interface Window {
     electronAPI: ElectronAPI;
+  }
+
+  namespace JSX {
+    interface IntrinsicElements {
+      webview: React.DetailedHTMLProps<
+        React.HTMLAttributes<HTMLElement> & {
+          src?: string;
+          partition?: string;
+          allowpopups?: boolean;
+          autosize?: boolean;
+        },
+        HTMLElement
+      >;
+    }
   }
 }
