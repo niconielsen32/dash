@@ -30,7 +30,9 @@ interface TaskModalProps {
 export function TaskModal({ projectPath, skills, onClose, onCreate }: TaskModalProps) {
   const [name, setName] = useState('');
   const [useWorktree, setUseWorktree] = useState(true);
-  const [autoApprove, setAutoApprove] = useState(() => localStorage.getItem('yoloMode') === 'true');
+  const [autoApprove, setAutoApprove] = useState(
+    () => localStorage.getItem('yoloMode') !== 'false',
+  );
 
   // Skills assignment state
   const [selectedSkills, setSelectedSkills] = useState<AssignedSkill[]>([]);

@@ -370,6 +370,7 @@ export function App() {
 
     const taskCwd = activeTask.path;
     const taskId = activeTask.id;
+    setGitStatus(null);
     refreshGitStatus(taskCwd, taskId);
 
     window.electronAPI.gitWatch({ id: taskId, cwd: taskCwd });
